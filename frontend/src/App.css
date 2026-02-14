@@ -1,0 +1,803 @@
+/* =========================================================================
+   Fairway Tracker — Golf-Inspired Stylesheet
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   Reset & Globals
+   --------------------------------------------------------------------------- */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #F5F0E8;
+  color: #1a3a2a;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: 'DM Serif Display', serif;
+  font-weight: 400;
+}
+
+/* ---------------------------------------------------------------------------
+   App Layout
+   --------------------------------------------------------------------------- */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+}
+
+/* ---------------------------------------------------------------------------
+   Header & Navigation
+   --------------------------------------------------------------------------- */
+
+.app-header {
+  background: #1a3a2a;
+  border-bottom: 3px solid #C49B2A;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+}
+
+.logo {
+  color: #F0D78C;
+  font-size: 1.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nav button {
+  background: none;
+  border: none;
+  color: #B3D9C2;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+
+.nav button:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.nav button.active {
+  background: rgba(255,255,255,0.15);
+  color: #F0D78C;
+}
+
+/* ---------------------------------------------------------------------------
+   Page & Typography
+   --------------------------------------------------------------------------- */
+
+.page h2 {
+  font-size: 1.8rem;
+  color: #1a3a2a;
+  margin-bottom: 20px;
+}
+
+.loading {
+  text-align: center;
+  color: #6B9E7B;
+  padding: 40px;
+}
+
+.empty-state {
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 48px 24px;
+  text-align: center;
+  color: #4A7C5C;
+  font-size: 1.1rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.error-text {
+  color: #c0392b;
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Voice Memo Upload
+   --------------------------------------------------------------------------- */
+
+.voice-memo-card {
+  background: linear-gradient(135deg, #D4ECDE 0%, #EEF7F1 100%);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  border: 1px solid #B3D9C2;
+}
+
+.voice-memo-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 4px;
+  color: #1a3a2a;
+}
+
+.voice-memo-hint {
+  color: #4A7C5C;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.upload-btn {
+  display: inline-block;
+  background: #2D5A3D;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.upload-btn:hover {
+  background: #1a3a2a;
+}
+
+.upload-btn.uploading {
+  background: #6B9E7B;
+  cursor: wait;
+}
+
+.transcript-preview {
+  margin-top: 14px;
+  background: rgba(255,255,255,0.7);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+}
+
+.transcript-preview strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #2D5A3D;
+}
+
+/* ---------------------------------------------------------------------------
+   Session Type Toggle
+   --------------------------------------------------------------------------- */
+
+.type-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  background: #E8DFD0;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.type-toggle button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #6B9E7B;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-toggle button.active {
+  background: #2D5A3D;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* ---------------------------------------------------------------------------
+   Form Card
+   --------------------------------------------------------------------------- */
+
+.form-card {
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.form-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #2D5A3D;
+  margin-bottom: 6px;
+  margin-top: 18px;
+}
+
+.form-label:first-child {
+  margin-top: 0;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #D4ECDE;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  background: #fff;
+  color: #1a3a2a;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #4A7C5C;
+  box-shadow: 0 0 0 3px rgba(74, 124, 92, 0.15);
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #D4ECDE;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  background: #fff;
+  color: #1a3a2a;
+  resize: vertical;
+  transition: border-color 0.2s;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: #4A7C5C;
+  box-shadow: 0 0 0 3px rgba(74, 124, 92, 0.15);
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: #8FC09F;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   Practice Area Grid
+   --------------------------------------------------------------------------- */
+
+.area-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.area-btn {
+  padding: 10px 8px;
+  border: 2px solid #D4ECDE;
+  border-radius: 8px;
+  background: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #4A7C5C;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.area-btn:hover {
+  border-color: #6B9E7B;
+  background: #EEF7F1;
+}
+
+.area-btn.selected {
+  background: #2D5A3D;
+  border-color: #2D5A3D;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+   Feel Rating Row
+   --------------------------------------------------------------------------- */
+
+.feel-row {
+  display: flex;
+  gap: 8px;
+}
+
+.feel-btn {
+  flex: 1;
+  padding: 10px 4px;
+  border: 2px solid #D4ECDE;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.2s;
+}
+
+.feel-btn:hover {
+  border-color: #6B9E7B;
+}
+
+.feel-btn.selected {
+  background: #2D5A3D;
+  border-color: #2D5A3D;
+  color: #fff;
+}
+
+.feel-num {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.feel-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ---------------------------------------------------------------------------
+   Save Button
+   --------------------------------------------------------------------------- */
+
+.save-btn {
+  display: block;
+  width: 100%;
+  margin-top: 24px;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: #2D5A3D;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #1a3a2a;
+}
+
+.save-btn:disabled {
+  cursor: default;
+}
+
+.save-btn.saved {
+  background: #4A7C5C;
+}
+
+/* ---------------------------------------------------------------------------
+   Stats Dashboard
+   --------------------------------------------------------------------------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.stat-card {
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 18px 14px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.stat-card.highlight {
+  background: #FDF8E8;
+  border: 2px solid #F0D78C;
+}
+
+.stat-value {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.6rem;
+  color: #1a3a2a;
+  line-height: 1.2;
+}
+
+.stat-card.highlight .stat-value {
+  color: #8B6914;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #6B9E7B;
+  font-weight: 500;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ---------------------------------------------------------------------------
+   Charts
+   --------------------------------------------------------------------------- */
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.chart-card {
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.chart-card h3 {
+  font-size: 1rem;
+  color: #2D5A3D;
+  margin-bottom: 14px;
+}
+
+/* ---------------------------------------------------------------------------
+   Recurring Themes
+   --------------------------------------------------------------------------- */
+
+.themes-section {
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.themes-section h3 {
+  font-size: 1.1rem;
+  color: #2D5A3D;
+  margin-bottom: 12px;
+}
+
+.theme-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-tag {
+  background: #FDF8E8;
+  border: 1px solid #F0D78C;
+  color: #8B6914;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------------
+   Session History Cards
+   --------------------------------------------------------------------------- */
+
+.session-card {
+  position: relative;
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  border-left: 5px solid #4A7C5C;
+}
+
+.session-card.round {
+  border-left-color: #C49B2A;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  color: #B3D9C2;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.delete-btn:hover {
+  background: #fce4e4;
+  color: #c0392b;
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.session-badge {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.session-date {
+  color: #6B9E7B;
+  font-size: 0.9rem;
+}
+
+.session-feel {
+  font-size: 0.85rem;
+  color: #4A7C5C;
+  background: #EEF7F1;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+.session-details {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.area-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.area-tag {
+  background: #D4ECDE;
+  color: #2D5A3D;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.ball-count {
+  font-size: 0.85rem;
+  color: #6B9E7B;
+}
+
+.course-name {
+  font-weight: 600;
+  color: #1a3a2a;
+}
+
+.round-score {
+  font-weight: 700;
+  color: #8B6914;
+  font-size: 1rem;
+}
+
+.nine-scores {
+  font-size: 0.85rem;
+  color: #6B9E7B;
+}
+
+.session-notes {
+  font-size: 0.9rem;
+  color: #4A7C5C;
+  margin-top: 6px;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------------------
+   AI Insights (in session cards)
+   --------------------------------------------------------------------------- */
+
+.ai-insights {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.insight-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.insight-icon {
+  flex-shrink: 0;
+}
+
+.insight-row.positive {
+  background: #EEF7F1;
+  color: #2D5A3D;
+}
+
+.insight-row.issue {
+  background: #FDF0E8;
+  color: #8B4513;
+}
+
+.insight-row.thought {
+  background: #FDF8E8;
+  color: #8B6914;
+}
+
+/* ---------------------------------------------------------------------------
+   AI Coaching Page
+   --------------------------------------------------------------------------- */
+
+.coaching-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.coaching-card {
+  background: #FAFAF8;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.coaching-card h3 {
+  font-size: 1.15rem;
+  color: #1a3a2a;
+  margin-bottom: 8px;
+}
+
+.coaching-desc {
+  font-size: 0.9rem;
+  color: #6B9E7B;
+  margin-bottom: 16px;
+}
+
+.coaching-btn {
+  background: #2D5A3D;
+  color: #fff;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.coaching-btn:hover:not(:disabled) {
+  background: #1a3a2a;
+}
+
+.coaching-btn:disabled {
+  background: #6B9E7B;
+  cursor: wait;
+}
+
+.coaching-response {
+  margin-top: 16px;
+  padding: 16px;
+  border-left: 4px solid #4A7C5C;
+  background: #EEF7F1;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: #1a3a2a;
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive — Tablets & Mobile
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    height: auto;
+    padding: 10px 16px;
+    gap: 8px;
+  }
+
+  .nav {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .nav button {
+    font-size: 0.8rem;
+    padding: 6px 10px;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .coaching-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .area-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .feel-row {
+    gap: 4px;
+  }
+
+  .feel-label {
+    font-size: 0.6rem;
+  }
+
+  .score-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-value {
+    font-size: 1.3rem;
+  }
+
+  .area-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .page h2 {
+    font-size: 1.4rem;
+  }
+}

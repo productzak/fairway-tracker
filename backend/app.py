@@ -154,16 +154,26 @@ def create_session():
         "id": str(uuid.uuid4()),
         "date": data.get("date", datetime.now().strftime("%Y-%m-%d")),
         "type": data.get("type", "range"),
+        "intention": data.get("intention", ""),
         "areas": data.get("areas", []),
         "ball_count": data.get("ball_count"),
         "feel_rating": data.get("feel_rating"),
+        "confidence": data.get("confidence"),
         "notes": data.get("notes", ""),
+        "equipment_notes": data.get("equipment_notes", ""),
         "course": data.get("course", ""),
         "score": data.get("score"),
         "front_nine": data.get("front_nine"),
         "back_nine": data.get("back_nine"),
+        "tees_played": data.get("tees_played", ""),
+        "fairways_hit": data.get("fairways_hit"),
+        "greens_in_regulation": data.get("greens_in_regulation"),
+        "total_putts": data.get("total_putts"),
+        "penalties": data.get("penalties"),
+        "up_and_downs": data.get("up_and_downs"),
         "highlights": data.get("highlights", ""),
         "trouble_spots": data.get("trouble_spots", ""),
+        "conditions": data.get("conditions"),
         "ai_parsed": data.get("ai_parsed"),
         "created_at": datetime.now().isoformat(),
     }
@@ -222,9 +232,7 @@ def get_stats():
     unique_dates = sorted(set(s["date"] for s in sessions if s.get("date")))
     streak = 0
     if unique_dates:
-        # Check from today backwards
         check_date = datetime.now().date()
-        # If the most recent session is not today, start from that date
         most_recent = datetime.strptime(unique_dates[-1], "%Y-%m-%d").date()
         if most_recent < check_date:
             check_date = most_recent
@@ -269,12 +277,64 @@ def get_stats():
         if s.get("score"):
             score_trend.append({"date": s["date"], "score": s["score"]})
 
+    # ── Enhanced round stats ──────────────────────────────────────────────
+
+    # FIR stats
+    rounds_with_fir = [s for s in rounds if s.get("fairways_hit") is not None]
+    avg_fir = round(sum(s["fairways_hit"] for s in rounds_with_fir) / len(rounds_with_fir), 1) if rounds_with_fir else None
+    avg_fir_pct = round((avg_fir / 14) * 100, 1) if avg_fir is not None else None
+
+    # GIR stats
+    rounds_with_gir = [s for s in rounds if s.get("greens_in_regulation") is not None]
+    avg_gir = round(sum(s["greens_in_regulation"] for s in rounds_with_gir) / len(rounds_with_gir), 1) if rounds_with_gir else None
+    avg_gir_pct = round((avg_gir / 18) * 100, 1) if avg_gir is not None else None
+
+    # Putts stats
+    rounds_with_putts = [s for s in rounds if s.get("total_putts") is not None]
+    avg_putts = round(sum(s["total_putts"] for s in rounds_with_putts) / len(rounds_with_putts), 1) if rounds_with_putts else None
+
+    # Penalties stats
+    rounds_with_penalties = [s for s in rounds if s.get("penalties") is not None]
+    avg_penalties = round(sum(s["penalties"] for s in rounds_with_penalties) / len(rounds_with_penalties), 1) if rounds_with_penalties else None
+
+    # Scrambling percentage: up_and_downs / (18 - GIR) for rounds with both
+    scrambling_pct = None
+    scramble_rounds = [s for s in rounds if s.get("up_and_downs") is not None and s.get("greens_in_regulation") is not None]
+    if scramble_rounds:
+        total_opportunities = sum(max(18 - (s["greens_in_regulation"] or 0), 0) for s in scramble_rounds)
+        total_made = sum(s["up_and_downs"] for s in scramble_rounds)
+        if total_opportunities > 0:
+            scrambling_pct = round((total_made / total_opportunities) * 100, 1)
+
+    # FIR / GIR / Putts trend charts
+    fir_trend = []
+    for s in rounds:
+        if s.get("fairways_hit") is not None:
+            fir_trend.append({"date": s["date"], "fir": s["fairways_hit"]})
+
+    gir_trend = []
+    for s in rounds:
+        if s.get("greens_in_regulation") is not None:
+            gir_trend.append({"date": s["date"], "gir": s["greens_in_regulation"]})
+
+    putts_trend = []
+    for s in rounds:
+        if s.get("total_putts") is not None:
+            putts_trend.append({"date": s["date"], "putts": s["total_putts"]})
+
+    # Confidence trend (last 20 sessions with confidence data)
+    confidence_trend = []
+    sessions_with_conf = [s for s in sessions if s.get("confidence")]
+    for s in sessions_with_conf[-20:]:
+        entry = {"date": s["date"]}
+        entry.update(s["confidence"])
+        confidence_trend.append(entry)
+
     # Recurring themes (issues from ai_parsed)
     issues = []
     for s in sessions:
         if s.get("ai_parsed") and s["ai_parsed"].get("issues"):
             issues.extend(s["ai_parsed"]["issues"])
-    # Deduplicate while preserving order
     seen = set()
     unique_issues = []
     for issue in issues:
@@ -298,6 +358,18 @@ def get_stats():
             "focus_distribution": focus_distribution,
             "score_trend": score_trend,
             "recurring_issues": unique_issues,
+            # Enhanced round stats
+            "avg_fir": avg_fir,
+            "avg_fir_pct": avg_fir_pct,
+            "avg_gir": avg_gir,
+            "avg_gir_pct": avg_gir_pct,
+            "avg_putts": avg_putts,
+            "avg_penalties": avg_penalties,
+            "scrambling_pct": scrambling_pct,
+            "fir_trend": fir_trend,
+            "gir_trend": gir_trend,
+            "putts_trend": putts_trend,
+            "confidence_trend": confidence_trend,
         }
     )
 
@@ -361,14 +433,24 @@ def transcribe_audio():
                 "their golf practice or round. Parse it into structured data.\n"
                 "Return ONLY valid JSON with these keys:\n"
                 '  "type": "range" or "round",\n'
+                '  "intention": string — what the player was focusing on, or empty string,\n'
                 '  "areas": array of practice areas from [driver, woods, long_irons, mid_irons, short_irons, wedges, chipping, putting, bunker],\n'
                 '  "ball_count": number or null,\n'
                 '  "feel_rating": 1-5 or null,\n'
+                '  "confidence": object with keys driver, irons, short_game, putting, course_management (each 1-5 or null) — only include if mentioned,\n'
                 '  "notes_summary": string summary of notes,\n'
+                '  "equipment_notes": string — any equipment changes mentioned, or empty string,\n'
                 '  "course": course name or empty string,\n'
                 '  "score": number or null,\n'
                 '  "front_nine": number or null,\n'
                 '  "back_nine": number or null,\n'
+                '  "tees_played": one of "championship", "blue", "white", "gold", "red", "other", or empty string,\n'
+                '  "fairways_hit": number or null,\n'
+                '  "greens_in_regulation": number or null,\n'
+                '  "total_putts": number or null,\n'
+                '  "penalties": number or null,\n'
+                '  "up_and_downs": number or null,\n'
+                '  "conditions": object with keys weather (sunny/cloudy/windy/rainy/hot/cold), wind (calm/light/moderate/strong), course_condition (dry/normal/wet) — only include if mentioned,\n'
                 '  "highlights": string or empty,\n'
                 '  "trouble_spots": string or empty,\n'
                 '  "key_focus": string,\n'
@@ -397,10 +479,26 @@ def _format_sessions_for_coaching(sessions, limit=30):
 
     lines = []
     for s in sessions_sorted:
+        # Common fields
+        intention = f" | Intention: {s['intention']}" if s.get("intention") else ""
+        equipment = f" | Equipment: {s['equipment_notes']}" if s.get("equipment_notes") else ""
+
+        # Confidence
+        conf_str = ""
+        if s.get("confidence"):
+            c = s["confidence"]
+            parts = []
+            for key, label in [("driver", "Driver"), ("irons", "Irons"), ("short_game", "Short Game"), ("putting", "Putting"), ("course_management", "Course Mgmt")]:
+                if c.get(key):
+                    parts.append(f"{label}:{c[key]}/5")
+            if parts:
+                conf_str = f" | Confidence: {', '.join(parts)}"
+
         if s["type"] == "range":
             line = (
                 f"[Range] {s['date']} — Areas: {', '.join(s.get('areas', []))} | "
                 f"Balls: {s.get('ball_count', '?')} | Feel: {s.get('feel_rating', '?')}/5"
+                f"{intention}{conf_str}{equipment}"
             )
             if s.get("notes"):
                 line += f" | Notes: {s['notes'][:200]}"
@@ -415,7 +513,33 @@ def _format_sessions_for_coaching(sessions, limit=30):
                 f"[Round] {s['date']} — Course: {s.get('course', '?')} | "
                 f"Score: {s.get('score', '?')} (F9: {s.get('front_nine', '?')}, "
                 f"B9: {s.get('back_nine', '?')}) | Feel: {s.get('feel_rating', '?')}/5"
+                f"{intention}{conf_str}{equipment}"
             )
+            # Enhanced round stats
+            if s.get("tees_played"):
+                line += f" | Tees: {s['tees_played']}"
+            if s.get("fairways_hit") is not None:
+                line += f" | FIR: {s['fairways_hit']}/14"
+            if s.get("greens_in_regulation") is not None:
+                line += f" | GIR: {s['greens_in_regulation']}/18"
+            if s.get("total_putts") is not None:
+                line += f" | Putts: {s['total_putts']}"
+            if s.get("penalties") is not None:
+                line += f" | Penalties: {s['penalties']}"
+            if s.get("up_and_downs") is not None:
+                line += f" | Up&Downs: {s['up_and_downs']}"
+            # Conditions
+            if s.get("conditions"):
+                cond = s["conditions"]
+                cond_parts = []
+                if cond.get("weather"):
+                    cond_parts.append(cond["weather"])
+                if cond.get("wind"):
+                    cond_parts.append(f"wind:{cond['wind']}")
+                if cond.get("course_condition"):
+                    cond_parts.append(f"course:{cond['course_condition']}")
+                if cond_parts:
+                    line += f" | Conditions: {', '.join(cond_parts)}"
             if s.get("highlights"):
                 line += f" | Highlights: {s['highlights'][:150]}"
             if s.get("trouble_spots"):
@@ -444,11 +568,18 @@ def get_coaching_advice():
             model=CLAUDE_MODEL,
             max_tokens=1024,
             system=(
-                "You are a supportive golf coach analyzing a player's practice history. "
-                "Give specific, actionable advice based on their patterns. Be encouraging "
-                "but honest. Keep your response concise — 3-4 short paragraphs max. Use a "
-                "conversational, coach-like tone. Reference specific things from their "
-                "sessions to show you're paying attention."
+                "You are a supportive, knowledgeable golf coach analyzing a player's "
+                "practice and play history. You have access to their session data including "
+                "practice areas, round stats (FIR, GIR, putts, penalties, scrambling), feel "
+                "ratings, confidence levels across different parts of their game, pre-session "
+                "intentions, playing conditions, and equipment changes. Give specific, "
+                "actionable advice based on patterns you see. Compare their intentions to "
+                "their actual sessions — are they following through? Look at confidence "
+                "trends — where are they gaining or losing confidence? Analyze their round "
+                "stats to identify the biggest scoring opportunities (e.g., if they're losing "
+                "strokes to penalties or putting). Be encouraging but honest. Keep your "
+                "response to 3-4 short paragraphs. Use a conversational, coach-like tone. "
+                "Reference specific data points from their sessions."
             ),
             messages=[
                 {
@@ -481,10 +612,13 @@ def get_coaching_summary():
             model=CLAUDE_MODEL,
             max_tokens=1024,
             system=(
-                "You are a golf analytics assistant. Provide a clear, concise summary "
-                "of the player's recent practice and play patterns. Include: practice "
-                "frequency, areas of focus, trends in feel/scores, and any patterns you "
-                "notice (both positive and concerning). Be specific and data-driven. "
+                "You are a golf analytics assistant providing a comprehensive game summary. "
+                "Analyze the player's data including: practice frequency and focus areas, "
+                "round scoring trends, fairways hit and greens in regulation percentages, "
+                "putting averages, penalty frequency, scrambling rate, confidence trends "
+                "across different game areas, how conditions affected their scores, and any "
+                "equipment changes. Provide a clear, data-driven summary organized around: "
+                "overall trajectory, strengths, areas for improvement, and notable patterns. "
                 "Keep it to 3-4 short paragraphs."
             ),
             messages=[

@@ -151,9 +151,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [courseDetails, setCourseDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
   const debounceRef = useRef(null);
   const wrapperRef = useRef(null);
 
@@ -170,7 +168,6 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
 
   function handleInputChange(val) {
     setQuery(val);
-    setManualMode(false);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (val.length < 2) { setResults([]); setShowResults(false); return; }
@@ -190,6 +187,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
   async function handleSelect(course) {
     setShowResults(false);
     setQuery('');
+    setLoadingDetails(true);
 
     // Immediately show the selected course card with search result data
     onCourseSelect({
@@ -197,41 +195,40 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
       name: course.name,
       city: course.city || '',
       state: course.state || '',
+      holes: course.holes || 18,
       par: null,
       tees: [],
     });
 
     // Then fetch full details (tees, par, etc.)
-    setLoadingDetails(true);
     try {
       const details = await api(`/api/courses/${course.id}`);
       if (details && !details.error) {
-        setCourseDetails(details);
         onCourseSelect({
           course_id: course.id,
           name: details.name || course.name,
           city: details.city || course.city || '',
           state: details.state || course.state || '',
+          holes: details.holes || course.holes || 18,
           par: details.par,
           tees: details.tees || [],
         });
       }
-    } catch {
-      // Keep the partial selection from above
+    } catch (err) {
+      console.error('Failed to fetch course details:', err);
     }
     setLoadingDetails(false);
   }
 
   function handleClear() {
     setQuery('');
-    setCourseDetails(null);
-    setManualMode(false);
+    setLoadingDetails(false);
     onClear();
   }
 
-  // If a course is already selected, show the selected course card
-  if (selectedCourse && !manualMode) {
-    const tees = courseDetails?.tees || selectedCourse.tees || [];
+  // If a course is already selected, show the selected course card + tees
+  if (selectedCourse) {
+    const tees = selectedCourse.tees || [];
 
     return (
       <div className="course-search-wrapper">
@@ -244,40 +241,55 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
                 {[selectedCourse.city, selectedCourse.state].filter(Boolean).join(', ')}
               </span>
             )}
-            {selectedCourse.par && <span className="selected-course-par">Par {selectedCourse.par}</span>}
+            <div className="selected-course-meta">
+              {selectedCourse.holes && <span>{selectedCourse.holes} holes</span>}
+              {selectedCourse.par && <span>Par {selectedCourse.par}</span>}
+            </div>
           </div>
           <button className="course-clear-btn" onClick={handleClear} title="Change course">&times;</button>
         </div>
 
+        {loadingDetails && <p className="course-loading"><span className="spinner" /> Loading tee data...</p>}
+
         {/* Tee selection from API data */}
         {tees.length > 0 && (
           <>
-            <label className="form-label">Select Tees</label>
+            <label className="form-label">Select Your Tees</label>
             <div className="api-tees-grid">
-              {tees.map((t, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className={`api-tee-btn ${selectedTee && selectedTee.name === t.name ? 'selected' : ''}`}
-                  onClick={() => onTeeSelect(t)}
-                >
-                  <span className="api-tee-header">
-                    <span className="tee-color-dot" style={{ background: TEE_COLORS[t.color] || '#9ca3af' }} />
-                    <span className="api-tee-name">{t.name}</span>
-                  </span>
-                  {t.total_yardage && <span className="api-tee-yards">{t.total_yardage} yds</span>}
-                  {(t.slope || t.rating) && (
-                    <span className="api-tee-info">
-                      {t.slope && `S: ${t.slope}`}{t.slope && t.rating && ' · '}{t.rating && `R: ${t.rating}`}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {tees.map((t, i) => {
+                const isSelected = selectedTee && selectedTee.name === t.name;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`api-tee-card ${isSelected ? 'selected' : ''}`}
+                    onClick={() => onTeeSelect(t)}
+                  >
+                    <div className="tee-card-header">
+                      <span className="tee-color-dot" style={{ background: TEE_COLORS[t.color] || '#9ca3af' }} />
+                      <span className="tee-card-name">{t.name}</span>
+                    </div>
+                    {t.total_yardage && (
+                      <span className="tee-card-yards">{Number(t.total_yardage).toLocaleString()} yds</span>
+                    )}
+                    {t.slope && <span className="tee-card-detail">Slope: {t.slope}</span>}
+                    {t.rating && <span className="tee-card-detail">Rating: {t.rating}</span>}
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
 
-        {loadingDetails && <p className="course-loading"><span className="spinner" /> Loading course data...</p>}
+        {/* No tee data fallback */}
+        {!loadingDetails && tees.length === 0 && (
+          <p className="course-manual-link">
+            No tee data available.{' '}
+            <button className="link-btn" onClick={() => { handleClear(); if (onManualMode) onManualMode(); }}>
+              Enter details manually
+            </button>
+          </p>
+        )}
       </div>
     );
   }
@@ -322,13 +334,11 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
         </p>
       )}
 
-      {!query && !selectedCourse && (
-        <p className="course-manual-link">
-          <button className="link-btn" onClick={() => { if (onManualMode) onManualMode(); }}>
-            Can't find your course? Enter manually
-          </button>
-        </p>
-      )}
+      <p className="course-manual-link">
+        <button className="link-btn" onClick={() => { if (onManualMode) onManualMode(); }}>
+          Can't find your course? Enter manually
+        </button>
+      </p>
     </div>
   );
 }
@@ -439,6 +449,10 @@ function LogSession({ onSaved }) {
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedTee, setSelectedTee] = useState(null);
   const [manualCourseMode, setManualCourseMode] = useState(false);
+  // Manual tee entry
+  const [manualYardage, setManualYardage] = useState('');
+  const [manualSlope, setManualSlope] = useState('');
+  const [manualRating, setManualRating] = useState('');
   // Conditions
   const [weather, setWeather] = useState('');
   const [wind, setWind] = useState('');
@@ -554,9 +568,9 @@ function LogSession({ onSaved }) {
       course_city: isRound && selectedCourse ? selectedCourse.city : '',
       course_state: isRound && selectedCourse ? selectedCourse.state : '',
       course_par: isRound && selectedCourse ? selectedCourse.par : null,
-      tee_yardage: isRound && selectedTee ? selectedTee.total_yardage : null,
-      tee_slope: isRound && selectedTee ? selectedTee.slope : null,
-      tee_rating: isRound && selectedTee ? selectedTee.rating : null,
+      tee_yardage: isRound ? (selectedTee ? selectedTee.total_yardage : (manualYardage ? parseInt(manualYardage) : null)) : null,
+      tee_slope: isRound ? (selectedTee ? selectedTee.slope : (manualSlope ? parseInt(manualSlope) : null)) : null,
+      tee_rating: isRound ? (selectedTee ? selectedTee.rating : (manualRating ? parseFloat(manualRating) : null)) : null,
       score: isRound && score ? parseInt(score) : null,
       front_nine: isRound && frontNine ? parseInt(frontNine) : null,
       back_nine: isRound && backNine ? parseInt(backNine) : null,
@@ -602,6 +616,9 @@ function LogSession({ onSaved }) {
       setSelectedCourse(null);
       setSelectedTee(null);
       setManualCourseMode(false);
+      setManualYardage('');
+      setManualSlope('');
+      setManualRating('');
       setWeather('');
       setWind('');
       setCourseCondition('');
@@ -720,6 +737,23 @@ function LogSession({ onSaved }) {
                       {t.label}
                     </button>
                   ))}
+                </div>
+
+                {/* Manual Tee Details */}
+                <label className="form-label">Tee Details (optional)</label>
+                <div className="manual-tee-details">
+                  <div className="round-stat-field">
+                    <label className="mini-label">Yardage</label>
+                    <input type="number" value={manualYardage} onChange={e => setManualYardage(e.target.value)} placeholder="e.g. 6200" className="form-input" />
+                  </div>
+                  <div className="round-stat-field">
+                    <label className="mini-label">Slope</label>
+                    <input type="number" value={manualSlope} onChange={e => setManualSlope(e.target.value)} placeholder="e.g. 128" className="form-input" />
+                  </div>
+                  <div className="round-stat-field">
+                    <label className="mini-label">Rating</label>
+                    <input type="number" value={manualRating} onChange={e => setManualRating(e.target.value)} placeholder="e.g. 71.2" className="form-input" step="0.1" />
+                  </div>
                 </div>
               </>
             )}

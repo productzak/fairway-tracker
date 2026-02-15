@@ -1304,6 +1304,7 @@ h1, h2, h3 {
 
 .course-search-input-wrap {
   position: relative;
+  z-index: 50;
 }
 
 .search-icon {

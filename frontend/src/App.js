@@ -298,20 +298,20 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
           className="form-input course-search-input"
         />
         {loading && <span className="spinner search-spinner" />}
-      </div>
 
-      {showResults && (
-        <div className="course-results-dropdown fade-in">
-          {results.map(c => (
-            <button key={c.id} className="course-result-item" onClick={() => handleSelect(c)}>
-              <strong>{c.name}</strong>
-              {(c.city || c.state) && (
-                <span className="course-result-loc">{[c.city, c.state].filter(Boolean).join(', ')}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+        {showResults && (
+          <div className="course-results-dropdown fade-in">
+            {results.map(c => (
+              <button key={c.id} className="course-result-item" onClick={() => handleSelect(c)}>
+                <strong>{c.name}</strong>
+                {(c.city || c.state) && (
+                  <span className="course-result-loc">{[c.city, c.state].filter(Boolean).join(', ')}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {!showResults && query.length >= 2 && !loading && results.length === 0 && (
         <p className="course-no-results">

@@ -5,6 +5,7 @@ A personal golf practice and round tracker with AI-powered coaching. Log range s
 ## What It Does
 
 - **Log Sessions** — Track range sessions (practice areas, ball count, notes) and rounds (course, score, FIR, GIR, putts, penalties, scrambling, tees played, conditions)
+- **Course Search** — Type-ahead course search powered by GolfCourseAPI.com with auto-fill for par, tees (with slope, rating, yardage), city, and state. Results are cached locally to stay within the free API tier. Manual entry fallback available
 - **Pre-Session Intentions** — Set a focus for each session so the AI coach can track follow-through
 - **Confidence Ratings** — Rate your confidence in Driver, Irons, Short Game, Putting, and Course Management (1-5)
 - **Voice Memos** — Upload a voice recording and let AI auto-fill the form (extracts all fields including round stats and conditions)
@@ -17,6 +18,7 @@ A personal golf practice and round tracker with AI-powered coaching. Log range s
 - **Python 3.10+** — [Download Python](https://www.python.org/downloads/)
 - **Node.js 18+** — [Download Node.js](https://nodejs.org/)
 - **Anthropic API Key** — [Get an API key](https://console.anthropic.com/) (required for AI features)
+- **Golf Course API Key** *(optional)* — [Get a key at GolfCourseAPI.com](https://golfcourseapi.com/) (free tier: 300 requests/day — enables course search & auto-fill)
 - **ffmpeg** *(optional)* — Required only for voice memo transcription
 - **openai-whisper** *(optional)* — Required only for voice memo transcription
 
@@ -42,7 +44,22 @@ set ANTHROPIC_API_KEY=your-api-key-here
 $env:ANTHROPIC_API_KEY = "your-api-key-here"
 ```
 
-> **Tip:** Add the export line to your `~/.bashrc` or `~/.zshrc` so you don't have to set it every time.
+> **Tip:** Add the export lines to your `~/.bashrc` or `~/.zshrc` so you don't have to set them every time.
+
+### 2b. Set your Golf Course API key *(optional)*
+
+```bash
+# macOS/Linux
+export GOLF_COURSE_API_KEY="your-key-here"
+
+# Windows (Command Prompt)
+set GOLF_COURSE_API_KEY=your-key-here
+
+# Windows (PowerShell)
+$env:GOLF_COURSE_API_KEY = "your-key-here"
+```
+
+> Without this key, course search is disabled and you enter course names manually (the app works fine either way).
 
 ### 3. Start the backend
 
@@ -132,7 +149,8 @@ fairway-tracker/
 │   ├── app.py                # Flask API server (all routes)
 │   ├── requirements.txt      # Python dependencies
 │   └── data/                 # Auto-created data directory
-│       └── sessions.json     # Session data (auto-created)
+│       ├── sessions.json     # Session data (auto-created)
+│       └── course_cache.json # Cached course details from API (auto-created)
 ├── frontend/
 │   ├── package.json          # React dependencies + proxy config
 │   ├── public/
@@ -153,6 +171,8 @@ fairway-tracker/
 | DELETE | `/api/sessions/:id`    | Delete a session                               |
 | POST   | `/api/transcribe`      | Upload audio file for transcription + parsing  |
 | GET    | `/api/stats`           | Get computed stats including round stats & confidence |
+| GET    | `/api/courses/search`  | Search courses by name (requires GOLF_COURSE_API_KEY) |
+| GET    | `/api/courses/:id`     | Get course details with tees (cached 30 days)  |
 | GET    | `/api/coaching/advice` | Get AI coaching advice                         |
 | GET    | `/api/coaching/summary`| Get AI game summary                            |
 
@@ -167,6 +187,13 @@ fairway-tracker/
   "areas": ["Driver", "Putting"],
   "ball_count": 100,
   "course": "Course Name",
+  "course_id": "api-course-id",
+  "course_city": "City",
+  "course_state": "ST",
+  "course_par": 72,
+  "tee_yardage": 6200,
+  "tee_slope": 128,
+  "tee_rating": 70.5,
   "score": 91,
   "front_nine": 46,
   "back_nine": 45,
@@ -190,9 +217,9 @@ fairway-tracker/
 
 ## Data Storage
 
-All session data is stored in `backend/data/sessions.json`. This file is auto-created when you first run the backend. No database setup is needed.
+All session data is stored in `backend/data/sessions.json`. Course details fetched from the API are cached in `backend/data/course_cache.json` (30-day TTL) to minimize API calls. Both files are auto-created when needed. No database setup required.
 
-To back up your data, just copy this file. To reset, delete it and restart the backend.
+To back up your data, just copy these files. To reset, delete them and restart the backend.
 
 ## Ideas for Future Features
 

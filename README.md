@@ -1,14 +1,16 @@
 # ⛳ Fairway Tracker
 
-A personal golf practice and round tracker with AI-powered coaching. Log range sessions and rounds, track your stats over time, and get personalized coaching advice powered by Claude AI.
+A personal golf practice and round tracker with AI-powered coaching. Log range sessions and rounds with detailed stats, track your game over time, and get personalized coaching advice powered by Claude AI.
 
 ## What It Does
 
-- **Log Sessions** — Track range sessions (practice areas, ball count, feel rating, notes) and rounds (course, score, front/back nine, highlights, trouble spots)
-- **Voice Memos** — Upload a voice recording from your phone and let AI auto-fill the session form
-- **Dashboard** — See your stats at a glance: session counts, streaks, scores, and charts for practice frequency, feel trends, focus distribution, and score progression
-- **Session History** — Browse all your past sessions with AI-parsed insights
-- **AI Coaching** — Get personalized practice advice and game summaries from an AI golf coach
+- **Log Sessions** — Track range sessions (practice areas, ball count, notes) and rounds (course, score, FIR, GIR, putts, penalties, scrambling, tees played, conditions)
+- **Pre-Session Intentions** — Set a focus for each session so the AI coach can track follow-through
+- **Confidence Ratings** — Rate your confidence in Driver, Irons, Short Game, Putting, and Course Management (1-5)
+- **Voice Memos** — Upload a voice recording and let AI auto-fill the form (extracts all fields including round stats and conditions)
+- **Dashboard** — Stat cards with animated count-up, charts for practice frequency, feel trends, score trends, FIR/GIR/putts trends, practice focus distribution, and a confidence radar chart
+- **Session History** — Browse past sessions with round stats pills, conditions, intentions, and AI-parsed insights
+- **AI Coaching** — Get personalized advice and game summaries that factor in round stats, confidence trends, intentions, conditions, and equipment changes
 
 ## Prerequisites
 
@@ -91,6 +93,37 @@ pip install openai-whisper
 
 > **Note:** Whisper downloads a ~140MB model file on first use. The app works fully without voice memo support — it's completely optional.
 
+## Features in Detail
+
+### Enhanced Round Tracking
+When logging a round, you can track:
+- **FIR (Fairways in Regulation)** — out of 14
+- **GIR (Greens in Regulation)** — out of 18
+- **Total Putts** — per round
+- **Penalties** — lost balls, OB, water
+- **Up & Downs / Scrambling** — successful saves
+- **Tees Played** — Championship, Blue, White, Gold, Red, or Other
+- **Playing Conditions** — weather, wind, course condition
+
+### Confidence Ratings
+An optional, collapsible section on the log form lets you rate your confidence (1-5) in five areas: Driver, Irons, Short Game, Putting, and Course Management. These show up as a radar chart on the dashboard and help the AI coach identify patterns.
+
+### Pre-Session Intentions
+A "What's your focus today?" field lets you set an intention before each session. The AI coach compares intentions to actual outcomes for more targeted advice.
+
+### Dashboard Stats
+The dashboard shows animated stat cards and charts including:
+- Core stats: total sessions, streak, balls hit, best/latest score, avg feel
+- Round stats: avg FIR, GIR, putts, penalties, scrambling %
+- Charts: weekly frequency, feel trend, focus distribution, score trend, FIR/GIR/putts trends, confidence radar
+
+### Design
+Modern, premium design inspired by Augusta National meets sports analytics:
+- **Fonts:** Playfair Display (headings) + Outfit (body) via Google Fonts
+- **Colors:** Deep greens, gold accents, cream/sand backgrounds, white cards
+- **Animations:** Fade-in page transitions, staggered card reveals, count-up numbers, skeleton loaders, hover lift effects
+- **Mobile:** Bottom navigation bar, responsive grids, touch-friendly targets
+
 ## Project Structure
 
 ```
@@ -107,7 +140,7 @@ fairway-tracker/
 │   └── src/
 │       ├── index.js          # React entry point
 │       ├── App.js            # All components (Dashboard, Log, History, Coach)
-│       └── App.css           # All styles (golf-inspired design)
+│       └── App.css           # All styles (premium golf-inspired design)
 └── README.md                 # This file
 ```
 
@@ -119,9 +152,41 @@ fairway-tracker/
 | POST   | `/api/sessions`        | Create a new session (auto-parses notes with AI) |
 | DELETE | `/api/sessions/:id`    | Delete a session                               |
 | POST   | `/api/transcribe`      | Upload audio file for transcription + parsing  |
-| GET    | `/api/stats`           | Get computed stats for the dashboard           |
+| GET    | `/api/stats`           | Get computed stats including round stats & confidence |
 | GET    | `/api/coaching/advice` | Get AI coaching advice                         |
 | GET    | `/api/coaching/summary`| Get AI game summary                            |
+
+## Session Data Schema
+
+```json
+{
+  "id": "unique-id-string",
+  "date": "2025-02-14",
+  "type": "range|round",
+  "intention": "what I'm focusing on today",
+  "areas": ["Driver", "Putting"],
+  "ball_count": 100,
+  "course": "Course Name",
+  "score": 91,
+  "front_nine": 46,
+  "back_nine": 45,
+  "tees_played": "white",
+  "fairways_hit": 7,
+  "greens_in_regulation": 5,
+  "total_putts": 36,
+  "penalties": 2,
+  "up_and_downs": 3,
+  "highlights": "text",
+  "trouble_spots": "text",
+  "conditions": { "weather": "sunny", "wind": "moderate", "course_condition": "dry" },
+  "feel_rating": 4,
+  "confidence": { "driver": 4, "irons": 3, "short_game": 4, "putting": 2, "course_management": 3 },
+  "notes": "free text...",
+  "equipment_notes": "new driver",
+  "ai_parsed": { "key_focus": "...", "positives": [], "issues": [], "swing_thoughts": [], "equipment": [] },
+  "created_at": "ISO datetime"
+}
+```
 
 ## Data Storage
 
@@ -136,9 +201,10 @@ Here are some ideas you could build with Claude Code:
 - **Hole-by-hole scoring** — Track individual hole scores and stats per round
 - **Photo uploads** — Attach swing photos or course pics to sessions
 - **Goal setting** — Set practice goals and track progress toward them
-- **Weather integration** — Auto-log weather conditions for each round
+- **Weather integration** — Auto-log weather conditions via API
 - **Club distance tracking** — Log and track average distances per club
 - **Practice plans** — AI-generated weekly practice plans based on your patterns
 - **Export to CSV** — Download your session data as a spreadsheet
-- **Dark mode** — Toggle between light and dark themes
+- **Dark mode** — Deep green/charcoal background with gold accents
 - **Social sharing** — Share round summaries or milestones
+- **Handicap tracking** — Calculate and track your handicap index over time

@@ -1296,6 +1296,308 @@ h1, h2, h3 {
 }
 
 /* ---------------------------------------------------------------------------
+   Course Search Component
+   --------------------------------------------------------------------------- */
+
+.course-search-wrapper {
+  margin-bottom: 4px;
+}
+
+.course-search-input-wrap {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: #8a8578;
+  pointer-events: none;
+}
+
+.course-search-input {
+  width: 100%;
+  padding: 11px 14px 11px 36px;
+  border: 1.5px solid #e8e4dc;
+  border-radius: 10px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  background: #fafaf8;
+  color: #2c2c2c;
+  transition: all 0.25s;
+}
+
+.course-search-input:focus {
+  outline: none;
+  border-color: #4A7C5C;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(74, 124, 92, 0.12);
+}
+
+.search-spinner {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e8e4dc;
+  border-top-color: #4A7C5C;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.course-results-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #e8e4dc;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+  max-height: 240px;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.course-result-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #2c2c2c;
+  border-bottom: 1px solid #f0ece4;
+  transition: background 0.15s;
+}
+
+.course-result-item:last-child {
+  border-bottom: none;
+}
+
+.course-result-item:hover {
+  background: #f0f8f3;
+}
+
+.course-result-loc {
+  font-size: 0.78rem;
+  color: #8a8578;
+  font-weight: 400;
+  margin-top: 1px;
+}
+
+.course-no-results {
+  padding: 14px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #8a8578;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #4A7C5C;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s;
+}
+
+.link-btn:hover {
+  color: #2D5A3D;
+}
+
+.course-manual-link {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: #8a8578;
+}
+
+.course-manual-link .link-btn {
+  font-size: 0.82rem;
+}
+
+/* Selected Course Card */
+.selected-course-card {
+  background: linear-gradient(135deg, rgba(45, 90, 61, 0.06) 0%, rgba(45, 90, 61, 0.02) 100%);
+  border: 1.5px solid rgba(45, 90, 61, 0.15);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.selected-course-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.selected-course-info strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #1a3a2a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selected-course-location {
+  font-size: 0.8rem;
+  color: #6B9E7B;
+  margin-top: 1px;
+}
+
+.selected-course-par {
+  font-size: 0.78rem;
+  color: #8a8578;
+  margin-top: 2px;
+}
+
+.course-clear-btn {
+  background: none;
+  border: 1.5px solid #e8e4dc;
+  border-radius: 8px;
+  color: #8a8578;
+  font-size: 1rem;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.course-clear-btn:hover {
+  background: #fce4e4;
+  border-color: #e8a0a0;
+  color: #c0392b;
+}
+
+/* API Tees Grid */
+.api-tees-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.api-tee-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1.5px solid #e8e4dc;
+  border-radius: 10px;
+  background: #fafaf8;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  transition: all 0.25s;
+}
+
+.api-tee-btn:hover {
+  border-color: #b3d9c2;
+  background: #f0f8f3;
+}
+
+.api-tee-btn.selected {
+  background: #2D5A3D;
+  border-color: #2D5A3D;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(45, 90, 61, 0.2);
+}
+
+.tee-color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.1);
+}
+
+.api-tee-btn.selected .tee-color-dot {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.api-tee-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  line-height: 1.2;
+}
+
+.api-tee-yards {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+.api-tee-info {
+  font-size: 0.68rem;
+  opacity: 0.6;
+}
+
+.course-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  color: #8a8578;
+  font-size: 0.85rem;
+}
+
+.course-loading .spinner {
+  border-color: rgba(45, 90, 61, 0.2);
+  border-top-color: #4A7C5C;
+}
+
+/* Tee info row in session cards */
+.tee-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #6b6560;
+  margin-bottom: 6px;
+}
+
+.tee-info-name {
+  font-weight: 600;
+  text-transform: capitalize;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tee-info-detail {
+  font-size: 0.75rem;
+  color: #8a8578;
+}
+
+.course-location-small {
+  font-size: 0.8rem;
+  color: #8a8578;
+}
+
+.vs-par {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #8a8578;
+  margin-left: 4px;
+}
+
+/* ---------------------------------------------------------------------------
    Responsive — Tablets
    --------------------------------------------------------------------------- */
 
@@ -1334,6 +1636,10 @@ h1, h2, h3 {
 
   .feel-label {
     font-size: 0.6rem;
+  }
+
+  .api-tees-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   }
 }
 
@@ -1403,5 +1709,19 @@ h1, h2, h3 {
 
   .coaching-card {
     padding: 20px;
+  }
+
+  .api-tees-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .selected-course-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .course-clear-btn {
+    align-self: flex-end;
+    margin-top: -28px;
   }
 }

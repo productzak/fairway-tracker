@@ -25,6 +25,18 @@ const TEES_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+const TEE_COLORS = {
+  black: '#1a1a1a',
+  blue: '#2563EB',
+  white: '#d4d4d4',
+  gold: '#C49B2A',
+  yellow: '#C49B2A',
+  red: '#DC2626',
+  green: '#16A34A',
+  silver: '#9ca3af',
+  gray: '#9ca3af',
+};
+
 const WEATHER_OPTIONS = ['Sunny', 'Cloudy', 'Windy', 'Rainy', 'Hot', 'Cold'];
 const WIND_OPTIONS = ['Calm', 'Light', 'Moderate', 'Strong'];
 const COURSE_CONDITION_OPTIONS = ['Dry/Fast', 'Normal', 'Wet/Soft'];
@@ -59,6 +71,17 @@ function formatDate(dateStr) {
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
+}
+
+function _guessTeeColor(teeName) {
+  if (!teeName) return 'gray';
+  const n = teeName.toLowerCase();
+  for (const color of ['black', 'blue', 'white', 'gold', 'red', 'green', 'silver', 'yellow']) {
+    if (n.includes(color)) return color;
+  }
+  if (n.includes('champ')) return 'black';
+  if (n.includes('senior') || n.includes('forward')) return 'gold';
+  return 'gray';
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +139,200 @@ function Skeleton({ width, height }) {
       className="skeleton"
       style={{ width: width || '100%', height: height || '20px' }}
     />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Course Search Component
+// ---------------------------------------------------------------------------
+
+function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, onTeeSelect }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [courseDetails, setCourseDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const debounceRef = useRef(null);
+  const wrapperRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowResults(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  function handleInputChange(val) {
+    setQuery(val);
+    setManualMode(false);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (val.length < 2) { setResults([]); setShowResults(false); return; }
+
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await api(`/api/courses/search?q=${encodeURIComponent(val)}`);
+        const list = Array.isArray(data) ? data : (data.courses || []);
+        setResults(list);
+        setShowResults(list.length > 0);
+      } catch { setResults([]); }
+      setLoading(false);
+    }, 300);
+  }
+
+  async function handleSelect(course) {
+    setShowResults(false);
+    setQuery('');
+    setLoadingDetails(true);
+
+    try {
+      const details = await api(`/api/courses/${course.id}`);
+      if (details && !details.error) {
+        setCourseDetails(details);
+        onCourseSelect({
+          course_id: course.id,
+          name: details.name || course.name,
+          city: details.city || course.city || '',
+          state: details.state || course.state || '',
+          par: details.par,
+          tees: details.tees || [],
+        });
+      } else {
+        // Fallback if details fail
+        onCourseSelect({
+          course_id: course.id,
+          name: course.name,
+          city: course.city || '',
+          state: course.state || '',
+          par: null,
+          tees: [],
+        });
+      }
+    } catch {
+      onCourseSelect({
+        course_id: course.id,
+        name: course.name,
+        city: course.city || '',
+        state: course.state || '',
+        par: null,
+        tees: [],
+      });
+    }
+    setLoadingDetails(false);
+  }
+
+  function handleClear() {
+    setQuery('');
+    setCourseDetails(null);
+    setManualMode(false);
+    onClear();
+  }
+
+  // If a course is already selected, show the selected course card
+  if (selectedCourse && !manualMode) {
+    const tees = courseDetails?.tees || selectedCourse.tees || [];
+
+    return (
+      <div className="course-search-wrapper">
+        <label className="form-label">Course</label>
+        <div className="selected-course-card">
+          <div className="selected-course-info">
+            <strong>{selectedCourse.name}</strong>
+            {(selectedCourse.city || selectedCourse.state) && (
+              <span className="selected-course-location">
+                {[selectedCourse.city, selectedCourse.state].filter(Boolean).join(', ')}
+              </span>
+            )}
+            {selectedCourse.par && <span className="selected-course-par">Par {selectedCourse.par}</span>}
+          </div>
+          <button className="course-clear-btn" onClick={handleClear} title="Change course">&times;</button>
+        </div>
+
+        {/* Tee selection from API data */}
+        {tees.length > 0 && (
+          <>
+            <label className="form-label">Select Tees</label>
+            <div className="api-tees-grid">
+              {tees.map((t, i) => (
+                <button
+                  key={i}
+                  className={`api-tee-btn ${selectedTee && selectedTee.name === t.name ? 'selected' : ''}`}
+                  onClick={() => onTeeSelect(t)}
+                >
+                  <span className="tee-color-dot" style={{ background: TEE_COLORS[t.color] || '#9ca3af' }} />
+                  <span className="api-tee-name">{t.name}</span>
+                  {t.total_yardage && <span className="api-tee-yards">{t.total_yardage} yds</span>}
+                  {(t.slope || t.rating) && (
+                    <span className="api-tee-info">
+                      {t.slope && `Slope ${t.slope}`}{t.slope && t.rating && ' / '}{t.rating && `Rating ${t.rating}`}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {loadingDetails && <p className="course-loading"><span className="spinner" /> Loading course data...</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="course-search-wrapper" ref={wrapperRef}>
+      <label className="form-label">Course</label>
+      <div className="course-search-input-wrap">
+        <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          type="text"
+          value={query}
+          onChange={e => handleInputChange(e.target.value)}
+          onFocus={() => { if (results.length > 0) setShowResults(true); }}
+          placeholder="Search for a course..."
+          className="form-input course-search-input"
+        />
+        {loading && <span className="spinner search-spinner" />}
+      </div>
+
+      {showResults && (
+        <div className="course-results-dropdown fade-in">
+          {results.map(c => (
+            <button key={c.id} className="course-result-item" onClick={() => handleSelect(c)}>
+              <strong>{c.name}</strong>
+              {(c.city || c.state) && (
+                <span className="course-result-loc">{[c.city, c.state].filter(Boolean).join(', ')}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!showResults && query.length >= 2 && !loading && results.length === 0 && (
+        <p className="course-no-results">
+          No courses found.{' '}
+          <button className="link-btn" onClick={() => { setManualMode(true); onClear(); }}>
+            Enter manually
+          </button>
+        </p>
+      )}
+
+      {!query && !selectedCourse && (
+        <p className="course-manual-link">
+          <button className="link-btn" onClick={() => setManualMode(true)}>
+            Can't find your course? Enter manually
+          </button>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -221,6 +438,10 @@ function LogSession({ onSaved }) {
   const [penalties, setPenalties] = useState('');
   const [upAndDowns, setUpAndDowns] = useState('');
   const [teesPlayed, setTeesPlayed] = useState('');
+  // Course search
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [selectedTee, setSelectedTee] = useState(null);
+  const [manualCourseMode, setManualCourseMode] = useState(false);
   // Conditions
   const [weather, setWeather] = useState('');
   const [wind, setWind] = useState('');
@@ -257,7 +478,41 @@ function LogSession({ onSaved }) {
     if (parsed.feel_rating) setFeelRating(parsed.feel_rating);
     if (parsed.notes_summary) setNotes(parsed.notes_summary);
     if (parsed.equipment_notes) setEquipmentNotes(parsed.equipment_notes);
-    if (parsed.course) setCourse(parsed.course);
+    if (parsed.course) {
+      setCourse(parsed.course);
+      // Try to search for the course via API
+      api(`/api/courses/search?q=${encodeURIComponent(parsed.course)}`)
+        .then(data => {
+          const list = Array.isArray(data) ? data : (data.courses || []);
+          if (list.length > 0) {
+            const match = list[0];
+            api(`/api/courses/${match.id}`).then(details => {
+              if (details && !details.error) {
+                setSelectedCourse({
+                  course_id: match.id,
+                  name: details.name || match.name,
+                  city: details.city || '',
+                  state: details.state || '',
+                  par: details.par,
+                  tees: details.tees || [],
+                });
+                setCourse(details.name || match.name);
+                // Try to match the tee
+                if (parsed.tees_played && details.tees) {
+                  const teeName = parsed.tees_played.toLowerCase();
+                  const matched = details.tees.find(t =>
+                    t.name.toLowerCase().includes(teeName) || t.color === teeName
+                  );
+                  if (matched) {
+                    setSelectedTee(matched);
+                    setTeesPlayed(matched.name);
+                  }
+                }
+              }
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+    }
     if (parsed.score) setScore(String(parsed.score));
     if (parsed.front_nine) setFrontNine(String(parsed.front_nine));
     if (parsed.back_nine) setBackNine(String(parsed.back_nine));
@@ -298,10 +553,17 @@ function LogSession({ onSaved }) {
       notes,
       equipment_notes: equipmentNotes,
       course: isRound ? course : '',
+      course_id: isRound && selectedCourse ? selectedCourse.course_id : null,
+      course_city: isRound && selectedCourse ? selectedCourse.city : '',
+      course_state: isRound && selectedCourse ? selectedCourse.state : '',
+      course_par: isRound && selectedCourse ? selectedCourse.par : null,
+      tee_yardage: isRound && selectedTee ? selectedTee.total_yardage : null,
+      tee_slope: isRound && selectedTee ? selectedTee.slope : null,
+      tee_rating: isRound && selectedTee ? selectedTee.rating : null,
       score: isRound && score ? parseInt(score) : null,
       front_nine: isRound && frontNine ? parseInt(frontNine) : null,
       back_nine: isRound && backNine ? parseInt(backNine) : null,
-      tees_played: isRound ? teesPlayed : '',
+      tees_played: isRound ? (selectedTee ? selectedTee.name : teesPlayed) : '',
       fairways_hit: isRound && fairwaysHit ? parseInt(fairwaysHit) : null,
       greens_in_regulation: isRound && gir ? parseInt(gir) : null,
       total_putts: isRound && totalPutts ? parseInt(totalPutts) : null,
@@ -340,6 +602,9 @@ function LogSession({ onSaved }) {
       setPenalties('');
       setUpAndDowns('');
       setTeesPlayed('');
+      setSelectedCourse(null);
+      setSelectedTee(null);
+      setManualCourseMode(false);
       setWeather('');
       setWind('');
       setCourseCondition('');
@@ -415,9 +680,51 @@ function LogSession({ onSaved }) {
           </>
         ) : (
           <>
-            {/* Course & Score */}
-            <label className="form-label">Course Name</label>
-            <input type="text" value={course} onChange={e => setCourse(e.target.value)} placeholder="e.g. Pebble Beach" className="form-input" />
+            {/* Course Search */}
+            {!manualCourseMode ? (
+              <CourseSearch
+                selectedCourse={selectedCourse}
+                selectedTee={selectedTee}
+                onCourseSelect={(c) => {
+                  setSelectedCourse(c);
+                  setCourse(c.name);
+                }}
+                onClear={() => {
+                  setSelectedCourse(null);
+                  setSelectedTee(null);
+                  setCourse('');
+                  setTeesPlayed('');
+                }}
+                onTeeSelect={(t) => {
+                  setSelectedTee(t);
+                  setTeesPlayed(t.name);
+                }}
+              />
+            ) : (
+              <>
+                <label className="form-label">Course Name</label>
+                <input type="text" value={course} onChange={e => setCourse(e.target.value)} placeholder="e.g. Pebble Beach" className="form-input" />
+                <p className="course-manual-link">
+                  <button className="link-btn" onClick={() => setManualCourseMode(false)}>
+                    Search for course instead
+                  </button>
+                </p>
+
+                {/* Manual Tees Played */}
+                <label className="form-label">Tees Played</label>
+                <div className="tees-grid">
+                  {TEES_OPTIONS.map(t => (
+                    <button
+                      key={t.value}
+                      className={`tee-btn ${teesPlayed === t.value ? 'selected' : ''}`}
+                      onClick={() => setTeesPlayed(teesPlayed === t.value ? '' : t.value)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <label className="form-label">Total Score</label>
             <input type="number" value={score} onChange={e => setScore(e.target.value)} placeholder="e.g. 92" className="form-input" />
@@ -431,20 +738,6 @@ function LogSession({ onSaved }) {
                 <label className="form-label">Back 9</label>
                 <input type="number" value={backNine} onChange={e => setBackNine(e.target.value)} placeholder="e.g. 45" className="form-input" />
               </div>
-            </div>
-
-            {/* Tees Played */}
-            <label className="form-label">Tees Played</label>
-            <div className="tees-grid">
-              {TEES_OPTIONS.map(t => (
-                <button
-                  key={t.value}
-                  className={`tee-btn ${teesPlayed === t.value ? 'selected' : ''}`}
-                  onClick={() => setTeesPlayed(teesPlayed === t.value ? '' : t.value)}
-                >
-                  {t.label}
-                </button>
-              ))}
             </div>
 
             {/* Round Stats Grid */}
@@ -646,6 +939,9 @@ function Dashboard() {
         <StatCard label="Total Balls Hit" value={stats.total_balls} icon="🏐" />
         <StatCard label="Best Score" value={stats.best_score || '—'} highlight icon="🏆" />
         <StatCard label="Latest Score" value={stats.latest_score || '—'} icon="📊" />
+        {stats.best_vs_par != null && (
+          <StatCard label="Best vs Par" value={stats.best_vs_par >= 0 ? `+${stats.best_vs_par}` : String(stats.best_vs_par)} highlight icon="🎯" />
+        )}
       </div>
 
       {/* Round Stats Section (only if round data exists) */}
@@ -912,14 +1208,31 @@ function SessionCard({ session, onDelete }) {
         <>
           <div className="session-details">
             {s.course && <span className="course-name">{s.course}</span>}
-            {s.score && <span className="round-score">Score: {s.score}</span>}
+            {(s.course_city || s.course_state) && (
+              <span className="course-location-small">{[s.course_city, s.course_state].filter(Boolean).join(', ')}</span>
+            )}
+            {s.score && (
+              <span className="round-score">
+                Score: {s.score}
+                {s.course_par && <span className="vs-par"> ({s.score - s.course_par >= 0 ? '+' : ''}{s.score - s.course_par})</span>}
+              </span>
+            )}
             {(s.front_nine || s.back_nine) && (
               <span className="nine-scores">
                 (F9: {s.front_nine || '—'} / B9: {s.back_nine || '—'})
               </span>
             )}
-            {s.tees_played && <span className="tees-badge">{s.tees_played}</span>}
           </div>
+          {/* Tee info */}
+          {s.tees_played && (
+            <div className="tee-info-row">
+              <span className="tee-color-dot" style={{ background: TEE_COLORS[_guessTeeColor(s.tees_played)] || '#9ca3af' }} />
+              <span className="tee-info-name">{s.tees_played}</span>
+              {s.tee_yardage && <span className="tee-info-detail">{s.tee_yardage} yds</span>}
+              {s.tee_slope && <span className="tee-info-detail">Slope {s.tee_slope}</span>}
+              {s.tee_rating && <span className="tee-info-detail">Rating {s.tee_rating}</span>}
+            </div>
+          )}
           {/* Round stats row */}
           {(s.fairways_hit != null || s.greens_in_regulation != null || s.total_putts != null) && (
             <div className="round-stats-row">

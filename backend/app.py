@@ -3,10 +3,13 @@ Fairway Tracker — Flask API Server
 
 This is the backend for the Fairway Tracker golf practice and round tracking app.
 It provides endpoints for session management, AI-powered note parsing, voice memo
-transcription, stats computation, and AI coaching.
+transcription, stats computation, AI coaching, and golf course API integration.
 
-Required environment variable:
-    ANTHROPIC_API_KEY — Your Anthropic API key for Claude AI features
+Required environment variables:
+    ANTHROPIC_API_KEY      — Your Anthropic API key for Claude AI features
+
+Optional environment variables:
+    GOLF_COURSE_API_KEY    — Your GolfCourseAPI.com key for course search/details
 
 Optional system dependencies (for voice memo support):
     - ffmpeg (audio conversion)
@@ -18,6 +21,8 @@ import os
 import uuid
 import tempfile
 import subprocess
+import time
+import requests
 from datetime import datetime, timedelta
 from collections import Counter
 
@@ -34,9 +39,17 @@ CORS(app)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sessions.json")
+COURSE_CACHE_FILE = os.path.join(DATA_DIR, "course_cache.json")
 
 # Claude model used for all AI features
 CLAUDE_MODEL = "claude-sonnet-4-5-20250514"
+
+# Golf Course API
+GOLF_COURSE_API_URL = "https://api.golfcourseapi.com"
+COURSE_CACHE_MAX_AGE_DAYS = 30
+
+# In-memory search cache to reduce API calls (query -> {results, timestamp})
+_search_cache = {}
 
 # ---------------------------------------------------------------------------
 # Data helpers
@@ -63,6 +76,55 @@ def _write_sessions(sessions):
     _ensure_data_file()
     with open(DATA_FILE, "w") as f:
         json.dump(sessions, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Course cache helpers
+# ---------------------------------------------------------------------------
+
+
+def _read_course_cache():
+    """Read the course cache from disk."""
+    if not os.path.exists(COURSE_CACHE_FILE):
+        return {}
+    with open(COURSE_CACHE_FILE, "r") as f:
+        return json.load(f)
+
+
+def _write_course_cache(cache):
+    """Write the course cache to disk."""
+    _ensure_data_file()
+    with open(COURSE_CACHE_FILE, "w") as f:
+        json.dump(cache, f, indent=2)
+
+
+def _get_cached_course(course_id):
+    """Get course details from cache if fresh (within COURSE_CACHE_MAX_AGE_DAYS)."""
+    cache = _read_course_cache()
+    key = str(course_id)
+    if key in cache:
+        entry = cache[key]
+        cached_at = datetime.fromisoformat(entry.get("_cached_at", "2000-01-01"))
+        if (datetime.now() - cached_at).days < COURSE_CACHE_MAX_AGE_DAYS:
+            return entry
+    return None
+
+
+def _set_cached_course(course_id, data):
+    """Store course details in disk cache with a timestamp."""
+    cache = _read_course_cache()
+    data["_cached_at"] = datetime.now().isoformat()
+    cache[str(course_id)] = data
+    _write_course_cache(cache)
+
+
+def _golf_api_headers():
+    """Return headers for the GolfCourseAPI."""
+    api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
+    return {
+        "Authorization": f"Key {api_key}",
+        "Content-Type": "application/json",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +224,13 @@ def create_session():
         "notes": data.get("notes", ""),
         "equipment_notes": data.get("equipment_notes", ""),
         "course": data.get("course", ""),
+        "course_id": data.get("course_id"),
+        "course_city": data.get("course_city", ""),
+        "course_state": data.get("course_state", ""),
+        "course_par": data.get("course_par"),
+        "tee_yardage": data.get("tee_yardage"),
+        "tee_slope": data.get("tee_slope"),
+        "tee_rating": data.get("tee_rating"),
         "score": data.get("score"),
         "front_nine": data.get("front_nine"),
         "back_nine": data.get("back_nine"),
@@ -271,11 +340,39 @@ def get_stats():
         {"name": area, "value": count} for area, count in area_counter.most_common()
     ]
 
-    # Score trend
+    # Score trend (include par info when available)
     score_trend = []
     for s in rounds:
         if s.get("score"):
-            score_trend.append({"date": s["date"], "score": s["score"]})
+            entry = {"date": s["date"], "score": s["score"]}
+            if s.get("course_par"):
+                entry["par"] = s["course_par"]
+                entry["vs_par"] = s["score"] - s["course_par"]
+            score_trend.append(entry)
+
+    # Best score vs par
+    best_vs_par = None
+    rounds_with_par = [s for s in rounds if s.get("score") and s.get("course_par")]
+    if rounds_with_par:
+        best_vs_par = min(s["score"] - s["course_par"] for s in rounds_with_par)
+
+    # Stats by course
+    course_stats = {}
+    for s in rounds:
+        if s.get("course") and s.get("score"):
+            cname = s["course"]
+            if cname not in course_stats:
+                course_stats[cname] = {"rounds": 0, "total_score": 0, "best": None}
+            course_stats[cname]["rounds"] += 1
+            course_stats[cname]["total_score"] += s["score"]
+            if course_stats[cname]["best"] is None or s["score"] < course_stats[cname]["best"]:
+                course_stats[cname]["best"] = s["score"]
+    for cname in course_stats:
+        cs = course_stats[cname]
+        cs["avg_score"] = round(cs["total_score"] / cs["rounds"], 1)
+    course_stats_list = [
+        {"course": k, **v} for k, v in sorted(course_stats.items(), key=lambda x: -x[1]["rounds"])
+    ]
 
     # ── Enhanced round stats ──────────────────────────────────────────────
 
@@ -370,8 +467,155 @@ def get_stats():
             "gir_trend": gir_trend,
             "putts_trend": putts_trend,
             "confidence_trend": confidence_trend,
+            "best_vs_par": best_vs_par,
+            "course_stats": course_stats_list,
         }
     )
+
+
+# ── Course API ─────────────────────────────────────────────────────────────
+
+
+@app.route("/api/courses/search", methods=["GET"])
+def search_courses():
+    """
+    Search for golf courses by name using GolfCourseAPI.
+    Uses an in-memory cache (5 min TTL) to avoid burning API calls.
+    """
+    query = request.args.get("q", "").strip()
+    if not query or len(query) < 2:
+        return jsonify([])
+
+    api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "GOLF_COURSE_API_KEY is not set", "courses": []}), 200
+
+    # Check in-memory search cache (5 min TTL)
+    cache_key = query.lower()
+    if cache_key in _search_cache:
+        entry = _search_cache[cache_key]
+        if time.time() - entry["ts"] < 300:
+            return jsonify(entry["results"])
+
+    try:
+        resp = requests.get(
+            f"{GOLF_COURSE_API_URL}/v1/search",
+            headers=_golf_api_headers(),
+            params={"search_query": query},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return jsonify([])
+
+        data = resp.json()
+        courses_raw = data.get("courses", [])
+
+        # Normalize to a simplified list
+        courses = []
+        for c in courses_raw:
+            location = c.get("location", {})
+            courses.append({
+                "id": c.get("id"),
+                "name": c.get("club_name") or c.get("course_name", ""),
+                "course_name": c.get("course_name", ""),
+                "city": location.get("city", ""),
+                "state": location.get("state", ""),
+                "holes": c.get("holes", 18),
+            })
+
+        _search_cache[cache_key] = {"results": courses, "ts": time.time()}
+        return jsonify(courses)
+
+    except Exception as e:
+        print(f"[Course search error] {e}")
+        return jsonify([])
+
+
+@app.route("/api/courses/<course_id>", methods=["GET"])
+def get_course_details(course_id):
+    """
+    Fetch full course details (tees, par, scorecard) from GolfCourseAPI.
+    Uses a local JSON file cache (30-day TTL) to stay within rate limits.
+    """
+    # Check disk cache first
+    cached = _get_cached_course(course_id)
+    if cached:
+        return jsonify(cached)
+
+    api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "GOLF_COURSE_API_KEY is not set"}), 200
+
+    try:
+        resp = requests.get(
+            f"{GOLF_COURSE_API_URL}/v1/courses/{course_id}",
+            headers=_golf_api_headers(),
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return jsonify({"error": f"API returned {resp.status_code}"}), 200
+
+        raw = resp.json()
+
+        # Normalize the response into our simplified format
+        location = raw.get("location", {})
+        tees_raw = raw.get("tees", {})
+
+        # Collect tees from male + female sections
+        tees = []
+        seen_tee_names = set()
+        for gender in ["male", "female"]:
+            for t in tees_raw.get(gender, []):
+                tee_name = t.get("tee_name", "Unknown")
+                if tee_name.lower() in seen_tee_names:
+                    continue
+                seen_tee_names.add(tee_name.lower())
+                tees.append({
+                    "name": tee_name,
+                    "color": _guess_tee_color(tee_name),
+                    "total_yardage": t.get("total_yards"),
+                    "par": t.get("par_total"),
+                    "slope": t.get("slope"),
+                    "rating": t.get("course_rating"),
+                })
+
+        # Compute course par from first tee with par data
+        course_par = None
+        for t in tees:
+            if t.get("par"):
+                course_par = t["par"]
+                break
+
+        result = {
+            "id": course_id,
+            "name": raw.get("club_name") or raw.get("course_name", ""),
+            "course_name": raw.get("course_name", ""),
+            "city": location.get("city", ""),
+            "state": location.get("state", ""),
+            "holes": raw.get("holes", 18),
+            "par": course_par,
+            "tees": tees,
+        }
+
+        _set_cached_course(course_id, result)
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"[Course details error] {e}")
+        return jsonify({"error": str(e)}), 200
+
+
+def _guess_tee_color(tee_name):
+    """Map a tee name to a standard color string for frontend display."""
+    name = tee_name.lower()
+    for color in ["black", "blue", "white", "gold", "red", "green", "silver", "yellow"]:
+        if color in name:
+            return color
+    if "champ" in name:
+        return "black"
+    if "senior" in name or "forward" in name:
+        return "gold"
+    return "gray"
 
 
 # ── Transcription ──────────────────────────────────────────────────────────
@@ -509,8 +753,18 @@ def _format_sessions_for_coaching(sessions, limit=30):
                 if ap.get("issues"):
                     line += f" | Issues: {', '.join(ap['issues'])}"
         else:
+            course_info = s.get('course', '?')
+            if s.get('course_par'):
+                course_info += f" (Par {s['course_par']}"
+                if s.get('tee_slope'):
+                    course_info += f", Slope {s['tee_slope']}"
+                if s.get('tee_rating'):
+                    course_info += f", Rating {s['tee_rating']}"
+                if s.get('tee_yardage'):
+                    course_info += f", {s['tee_yardage']}yds"
+                course_info += ")"
             line = (
-                f"[Round] {s['date']} — Course: {s.get('course', '?')} | "
+                f"[Round] {s['date']} — Course: {course_info} | "
                 f"Score: {s.get('score', '?')} (F9: {s.get('front_nine', '?')}, "
                 f"B9: {s.get('back_nine', '?')}) | Feel: {s.get('feel_rating', '?')}/5"
                 f"{intention}{conf_str}{equipment}"

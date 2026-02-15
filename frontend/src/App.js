@@ -50,13 +50,13 @@ const CONFIDENCE_AREAS = [
 ];
 
 const PIE_COLORS = [
-  '#2D5A3D', '#4A7C5C', '#6B9E7B', '#8FC09F', '#B3D9C2',
-  '#C49B2A', '#8B6914', '#D4ECDE', '#F0D78C'
+  '#059669', '#10B981', '#34D399', '#6EE7B7', '#A7F3D0',
+  '#D97706', '#F59E0B', '#3B82F6', '#8B5CF6'
 ];
 
 const RADAR_COLORS = {
-  stroke: '#2D5A3D',
-  fill: 'rgba(45, 90, 61, 0.2)',
+  stroke: '#059669',
+  fill: 'rgba(5, 150, 105, 0.15)',
 };
 
 // ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ function Skeleton({ width, height }) {
 // Course Search Component
 // ---------------------------------------------------------------------------
 
-function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, onTeeSelect }) {
+function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, onTeeSelect, onManualMode }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
@@ -190,8 +190,19 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
   async function handleSelect(course) {
     setShowResults(false);
     setQuery('');
-    setLoadingDetails(true);
 
+    // Immediately show the selected course card with search result data
+    onCourseSelect({
+      course_id: course.id,
+      name: course.name,
+      city: course.city || '',
+      state: course.state || '',
+      par: null,
+      tees: [],
+    });
+
+    // Then fetch full details (tees, par, etc.)
+    setLoadingDetails(true);
     try {
       const details = await api(`/api/courses/${course.id}`);
       if (details && !details.error) {
@@ -204,26 +215,9 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
           par: details.par,
           tees: details.tees || [],
         });
-      } else {
-        // Fallback if details fail
-        onCourseSelect({
-          course_id: course.id,
-          name: course.name,
-          city: course.city || '',
-          state: course.state || '',
-          par: null,
-          tees: [],
-        });
       }
     } catch {
-      onCourseSelect({
-        course_id: course.id,
-        name: course.name,
-        city: course.city || '',
-        state: course.state || '',
-        par: null,
-        tees: [],
-      });
+      // Keep the partial selection from above
     }
     setLoadingDetails(false);
   }
@@ -263,15 +257,18 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
               {tees.map((t, i) => (
                 <button
                   key={i}
+                  type="button"
                   className={`api-tee-btn ${selectedTee && selectedTee.name === t.name ? 'selected' : ''}`}
                   onClick={() => onTeeSelect(t)}
                 >
-                  <span className="tee-color-dot" style={{ background: TEE_COLORS[t.color] || '#9ca3af' }} />
-                  <span className="api-tee-name">{t.name}</span>
+                  <span className="api-tee-header">
+                    <span className="tee-color-dot" style={{ background: TEE_COLORS[t.color] || '#9ca3af' }} />
+                    <span className="api-tee-name">{t.name}</span>
+                  </span>
                   {t.total_yardage && <span className="api-tee-yards">{t.total_yardage} yds</span>}
                   {(t.slope || t.rating) && (
                     <span className="api-tee-info">
-                      {t.slope && `Slope ${t.slope}`}{t.slope && t.rating && ' / '}{t.rating && `Rating ${t.rating}`}
+                      {t.slope && `S: ${t.slope}`}{t.slope && t.rating && ' · '}{t.rating && `R: ${t.rating}`}
                     </span>
                   )}
                 </button>
@@ -319,7 +316,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
       {!showResults && query.length >= 2 && !loading && results.length === 0 && (
         <p className="course-no-results">
           No courses found.{' '}
-          <button className="link-btn" onClick={() => { setManualMode(true); onClear(); }}>
+          <button className="link-btn" onClick={() => { onClear(); if (onManualMode) onManualMode(); }}>
             Enter manually
           </button>
         </p>
@@ -327,7 +324,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
 
       {!query && !selectedCourse && (
         <p className="course-manual-link">
-          <button className="link-btn" onClick={() => setManualMode(true)}>
+          <button className="link-btn" onClick={() => { if (onManualMode) onManualMode(); }}>
             Can't find your course? Enter manually
           </button>
         </p>
@@ -699,6 +696,7 @@ function LogSession({ onSaved }) {
                   setSelectedTee(t);
                   setTeesPlayed(t.name);
                 }}
+                onManualMode={() => setManualCourseMode(true)}
               />
             ) : (
               <>
@@ -975,11 +973,11 @@ function Dashboard() {
           <h3>Weekly Practice Frequency</h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={stats.weekly_counts}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e8e4dc" />
-              <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#8a8578' }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#8a8578' }} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-              <Bar dataKey="sessions" fill="#2D5A3D" radius={[6, 6, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+              <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+              <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
+              <Bar dataKey="sessions" fill="#059669" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -989,11 +987,11 @@ function Dashboard() {
           <h3>Feel Rating Trend</h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={stats.feel_trend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e8e4dc" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#8a8578' }} />
-              <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: '#8a8578' }} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-              <Line type="monotone" dataKey="rating" stroke="#4A7C5C" strokeWidth={2.5} dot={{ fill: '#2D5A3D', r: 4 }} activeDot={{ r: 6 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+              <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+              <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
+              <Line type="monotone" dataKey="rating" stroke="#10B981" strokeWidth={2} dot={{ fill: '#059669', r: 3 }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -1018,7 +1016,7 @@ function Dashboard() {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -1030,11 +1028,11 @@ function Dashboard() {
             <h3>Score Trend</h3>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={stats.score_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e8e4dc" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <YAxis reversed domain={['dataMin - 5', 'dataMax + 5']} tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                <Line type="monotone" dataKey="score" stroke="#C49B2A" strokeWidth={2.5} dot={{ fill: '#8B6914', r: 4 }} activeDot={{ r: 6 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis reversed domain={['dataMin - 5', 'dataMax + 5']} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
+                <Line type="monotone" dataKey="score" stroke="#D97706" strokeWidth={2} dot={{ fill: '#B45309', r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1046,11 +1044,11 @@ function Dashboard() {
             <h3>Fairways Hit Trend</h3>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={stats.fir_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e8e4dc" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <YAxis domain={[0, 14]} tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                <Line type="monotone" dataKey="fir" stroke="#2D5A3D" strokeWidth={2.5} dot={{ fill: '#2D5A3D', r: 4 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis domain={[0, 14]} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
+                <Line type="monotone" dataKey="fir" stroke="#059669" strokeWidth={2} dot={{ fill: '#059669', r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1062,11 +1060,11 @@ function Dashboard() {
             <h3>Greens in Regulation Trend</h3>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={stats.gir_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e8e4dc" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <YAxis domain={[0, 18]} tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                <Line type="monotone" dataKey="gir" stroke="#4A7C5C" strokeWidth={2.5} dot={{ fill: '#4A7C5C', r: 4 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis domain={[0, 18]} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
+                <Line type="monotone" dataKey="gir" stroke="#10B981" strokeWidth={2} dot={{ fill: '#10B981', r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1078,11 +1076,11 @@ function Dashboard() {
             <h3>Putts per Round Trend</h3>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={stats.putts_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e8e4dc" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <YAxis reversed domain={['dataMin - 3', 'dataMax + 3']} tick={{ fontSize: 11, fill: '#8a8578' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                <Line type="monotone" dataKey="putts" stroke="#6B9E7B" strokeWidth={2.5} dot={{ fill: '#6B9E7B', r: 4 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis reversed domain={['dataMin - 3', 'dataMax + 3']} tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <Tooltip contentStyle={{ borderRadius: 6, border: '1px solid #E5E7EB', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', fontFamily: 'DM Sans' }} />
+                <Line type="monotone" dataKey="putts" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6', r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1094,9 +1092,9 @@ function Dashboard() {
             <h3>Confidence Snapshot</h3>
             <ResponsiveContainer width="100%" height={280}>
               <RadarChart data={radarData} cx="50%" cy="50%" outerRadius={90}>
-                <PolarGrid stroke="#e8e4dc" />
-                <PolarAngleAxis dataKey="area" tick={{ fontSize: 11, fill: '#5a5548' }} />
-                <PolarRadiusAxis domain={[0, 5]} tick={{ fontSize: 10, fill: '#8a8578' }} />
+                <PolarGrid stroke="#F3F4F6" />
+                <PolarAngleAxis dataKey="area" tick={{ fontSize: 11, fill: '#6B7280' }} />
+                <PolarRadiusAxis domain={[0, 5]} tick={{ fontSize: 10, fill: '#9CA3AF' }} />
                 <Radar dataKey="value" stroke={RADAR_COLORS.stroke} fill={RADAR_COLORS.fill} strokeWidth={2} />
               </RadarChart>
             </ResponsiveContainer>

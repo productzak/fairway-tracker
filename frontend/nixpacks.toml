@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["nodejs_22", "npm"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "caddy run --config Caddyfile --adapter caddyfile"
+
+[staticAssets]
+buildDir = "build"

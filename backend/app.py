@@ -35,9 +35,11 @@ import anthropic
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__)
-CORS(app)
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+CORS(app, origins=[frontend_url, "http://localhost:3000"])
+
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 DATA_FILE = os.path.join(DATA_DIR, "sessions.json")
 COURSE_CACHE_FILE = os.path.join(DATA_DIR, "course_cache.json")
 CUSTOM_TEES_FILE = os.path.join(DATA_DIR, "custom_tees.json")
@@ -1356,5 +1358,6 @@ def get_coaching_summary():
 
 if __name__ == "__main__":
     _ensure_data_file()
-    print("🏌️ Fairway Tracker API running on http://localhost:5000")
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"🏌️ Fairway Tracker API running on http://localhost:{port}")
+    app.run(host="0.0.0.0", debug=True, port=port)

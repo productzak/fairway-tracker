@@ -22,9 +22,11 @@ import uuid
 import tempfile
 import subprocess
 import time
+import secrets
 import requests
 from datetime import datetime, timedelta
 from collections import Counter
+from functools import wraps
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -53,6 +55,55 @@ COURSE_CACHE_MAX_AGE_DAYS = 30
 
 # In-memory search cache to reduce API calls (query -> {results, timestamp})
 _search_cache = {}
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+_valid_tokens = set()
+
+
+def _auth_required(f):
+    """Decorator that checks for a valid Bearer token. Skipped if APP_PASSWORD is not set."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not APP_PASSWORD:
+            return f(*args, **kwargs)
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            if token in _valid_tokens:
+                return f(*args, **kwargs)
+        return jsonify({"error": "Unauthorized"}), 401
+    return decorated
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    """Verify the app password and return a session token."""
+    if not APP_PASSWORD:
+        return jsonify({"success": True, "token": "no-auth-required"})
+    data = request.get_json() or {}
+    if data.get("password") == APP_PASSWORD:
+        token = secrets.token_hex(32)
+        _valid_tokens.add(token)
+        return jsonify({"success": True, "token": token})
+    return jsonify({"success": False, "error": "Incorrect password"}), 401
+
+
+@app.route("/api/auth/verify", methods=["GET"])
+def auth_verify():
+    """Check if a Bearer token is still valid."""
+    if not APP_PASSWORD:
+        return jsonify({"valid": True})
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        if token in _valid_tokens:
+            return jsonify({"valid": True})
+    return jsonify({"valid": False}), 401
+
 
 # ---------------------------------------------------------------------------
 # Data helpers
@@ -414,6 +465,7 @@ def _parse_notes_with_claude(notes):
 
 
 @app.route("/api/sessions", methods=["GET"])
+@_auth_required
 def get_sessions():
     """Return all sessions sorted newest first."""
     sessions = _read_sessions()
@@ -422,6 +474,7 @@ def get_sessions():
 
 
 @app.route("/api/sessions", methods=["POST"])
+@_auth_required
 def create_session():
     """
     Create a new session. If the notes field has more than 20 characters,
@@ -478,6 +531,7 @@ def create_session():
 
 
 @app.route("/api/sessions/<session_id>", methods=["DELETE"])
+@_auth_required
 def delete_session(session_id):
     """Delete a session by its ID."""
     sessions = _read_sessions()
@@ -490,6 +544,7 @@ def delete_session(session_id):
 
 
 @app.route("/api/stats", methods=["GET"])
+@_auth_required
 def get_stats():
     """
     Compute and return aggregate stats: totals, averages, streaks,
@@ -694,6 +749,7 @@ def get_stats():
 
 
 @app.route("/api/courses/search", methods=["GET"])
+@_auth_required
 def search_courses():
     """
     Search for golf courses by name using GolfCourseAPI.
@@ -757,6 +813,7 @@ def search_courses():
 
 
 @app.route("/api/courses/<course_id>", methods=["GET"])
+@_auth_required
 def get_course_details(course_id):
     """
     Fetch full course details (tees, par, scorecard) from GolfCourseAPI.
@@ -1018,6 +1075,7 @@ def _guess_tee_color(tee_name):
 
 
 @app.route("/api/courses/<course_id>/raw", methods=["GET"])
+@_auth_required
 def get_course_raw(course_id):
     """Debug: return raw API response for a course."""
     api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
@@ -1035,6 +1093,7 @@ def get_course_raw(course_id):
 
 
 @app.route("/api/courses/<course_id>/custom-tees", methods=["POST"])
+@_auth_required
 def save_custom_tee(course_id):
     """Save user-entered tee data for a course."""
     data = request.get_json()
@@ -1080,6 +1139,7 @@ def save_custom_tee(course_id):
 
 
 @app.route("/api/transcribe", methods=["POST"])
+@_auth_required
 def transcribe_audio():
     """
     Accept an audio file upload, convert it to WAV with ffmpeg,
@@ -1269,6 +1329,7 @@ def _format_sessions_for_coaching(sessions, limit=30):
 
 
 @app.route("/api/coaching/advice", methods=["GET"])
+@_auth_required
 def get_coaching_advice():
     """Return AI coaching advice based on the player's session history."""
     sessions = _read_sessions()
@@ -1313,6 +1374,7 @@ def get_coaching_advice():
 
 
 @app.route("/api/coaching/summary", methods=["GET"])
+@_auth_required
 def get_coaching_summary():
     """Return an AI-generated game summary based on session history."""
     sessions = _read_sessions()

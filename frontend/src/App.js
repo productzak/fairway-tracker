@@ -89,11 +89,20 @@ function _guessTeeColor(teeName) {
 // API helpers
 // ---------------------------------------------------------------------------
 
+function authFetch(url, options = {}) {
+  const token = localStorage.getItem('fairway_token');
+  const headers = { ...options.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  return fetch(url, { ...options, headers });
+}
+
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  });
+  const res = await authFetch(path, options);
   return res.json();
 }
 
@@ -556,7 +565,7 @@ function VoiceMemoUpload({ onParsed }) {
     formData.append('file', file);
 
     try {
-      const res = await fetch(`${API_BASE}/transcribe`, { method: 'POST', body: formData });
+      const res = await authFetch(`${API_BASE}/transcribe`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -1585,6 +1594,65 @@ function Coaching() {
 }
 
 // ---------------------------------------------------------------------------
+// Login Screen
+// ---------------------------------------------------------------------------
+
+function LoginScreen({ onLogin }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('fairway_token', data.token);
+        onLogin();
+      } else {
+        setError(data.error || 'Incorrect password');
+      }
+    } catch {
+      setError('Could not connect to server.');
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card fade-in">
+        <div className="login-logo">
+          <span className="login-logo-icon">⛳</span>
+          <h1>Fairway Tracker</h1>
+        </div>
+        <p className="login-subtitle">Enter your password to continue</p>
+        <form onSubmit={handleSubmit} className="login-form">
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+            className="form-input login-input"
+            autoFocus
+          />
+          {error && <p className="login-error">{error}</p>}
+          <button type="submit" className="login-btn" disabled={loading || !password}>
+            {loading ? <><span className="spinner" /> Checking...</> : 'Enter'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main App
 // ---------------------------------------------------------------------------
 
@@ -1592,6 +1660,33 @@ export default function App() {
   const [page, setPage] = useState('dashboard');
   const [sessions, setSessions] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 640);
+  const [authed, setAuthed] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  // Check for existing token on mount
+  useEffect(() => {
+    const token = localStorage.getItem('fairway_token');
+    if (!token) {
+      setAuthChecking(false);
+      return;
+    }
+    fetch(`${API_BASE}/auth/verify`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.valid) {
+          setAuthed(true);
+        } else {
+          localStorage.removeItem('fairway_token');
+        }
+      })
+      .catch(() => {
+        // If verify fails (e.g. no APP_PASSWORD set), allow access
+        setAuthed(true);
+      })
+      .finally(() => setAuthChecking(false));
+  }, []);
 
   useEffect(() => {
     function handleResize() { setIsMobile(window.innerWidth <= 640); }
@@ -1600,14 +1695,42 @@ export default function App() {
   }, []);
 
   const loadSessions = useCallback(() => {
-    api(`${API_BASE}/sessions`).then(data => setSessions(data));
-  }, []);
+    if (!authed) return;
+    api(`${API_BASE}/sessions`).then(data => {
+      if (Array.isArray(data)) setSessions(data);
+    });
+  }, [authed]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   async function handleDelete(id) {
     await api(`${API_BASE}/sessions/${id}`, { method: 'DELETE' });
     loadSessions();
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('fairway_token');
+    setAuthed(false);
+    setSessions([]);
+    setPage('dashboard');
+  }
+
+  if (authChecking) {
+    return (
+      <div className="login-screen">
+        <div className="login-card fade-in">
+          <div className="login-logo">
+            <span className="login-logo-icon">⛳</span>
+            <h1>Fairway Tracker</h1>
+          </div>
+          <p className="login-subtitle">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authed) {
+    return <LoginScreen onLogin={() => setAuthed(true)} />;
   }
 
   const navItems = [
@@ -1625,19 +1748,22 @@ export default function App() {
           <h1 className="logo" onClick={() => setPage('dashboard')}>
             <span className="logo-icon">⛳</span> Fairway Tracker
           </h1>
-          {!isMobile && (
-            <nav className="nav">
-              {navItems.map(item => (
-                <button
-                  key={item.key}
-                  className={page === item.key ? 'active' : ''}
-                  onClick={() => setPage(item.key)}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-          )}
+          <div className="header-right">
+            {!isMobile && (
+              <nav className="nav">
+                {navItems.map(item => (
+                  <button
+                    key={item.key}
+                    className={page === item.key ? 'active' : ''}
+                    onClick={() => setPage(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            )}
+            <button className="logout-btn" onClick={handleLogout}>Log Out</button>
+          </div>
         </div>
       </header>
 

@@ -148,17 +148,24 @@ fairway-tracker/
 ├── backend/
 │   ├── app.py                # Flask API server (all routes)
 │   ├── requirements.txt      # Python dependencies
+│   ├── Procfile              # Railway/Heroku process definition
+│   ├── nixpacks.toml         # Railway build configuration
 │   └── data/                 # Auto-created data directory
-│       ├── sessions.json     # Session data (auto-created)
-│       └── course_cache.json # Cached course details from API (auto-created)
+│       ├── .gitkeep          # Keeps directory in git
+│       ├── sessions.json     # Session data (auto-created, gitignored)
+│       └── course_cache.json # Cached course details (auto-created, gitignored)
 ├── frontend/
 │   ├── package.json          # React dependencies + proxy config
+│   ├── Caddyfile             # Caddy web server config for production
+│   ├── nixpacks.toml         # Railway build configuration
 │   ├── public/
 │   │   └── index.html        # HTML template with Google Fonts
 │   └── src/
 │       ├── index.js          # React entry point
+│       ├── config.js         # API base URL configuration
 │       ├── App.js            # All components (Dashboard, Log, History, Coach)
 │       └── App.css           # All styles (premium golf-inspired design)
+├── DEPLOYMENT.md             # Railway deployment guide
 └── README.md                 # This file
 ```
 
@@ -220,6 +227,45 @@ fairway-tracker/
 All session data is stored in `backend/data/sessions.json`. Course details fetched from the API are cached in `backend/data/course_cache.json` (30-day TTL) to minimize API calls. Both files are auto-created when needed. No database setup required.
 
 To back up your data, just copy these files. To reset, delete them and restart the backend.
+
+## Deploying to Railway
+
+### Prerequisites
+- A Railway.app account (sign up at railway.app)
+- Your GitHub repo connected to Railway
+
+### Steps
+
+1. Go to railway.app and create a new project
+2. Select "Deploy from GitHub repo" and choose your fairway-tracker repo
+
+3. Create TWO services from the same repo:
+
+   **Backend Service:**
+   - Set root directory to `/backend`
+   - Add environment variables:
+     - ANTHROPIC_API_KEY = your key
+     - GOLF_COURSE_API_KEY = your key
+     - FRONTEND_URL = (set after frontend is deployed)
+   - In Settings > Networking, click "Generate Domain"
+   - (Optional) Add a persistent volume mounted at `/data` and set DATA_DIR=/data
+
+   **Frontend Service:**
+   - Set root directory to `/frontend`
+   - Add environment variable:
+     - REACT_APP_API_URL = https://your-backend-domain.up.railway.app/api
+   - In Settings > Networking, click "Generate Domain"
+
+4. After both services have domains:
+   - Go back to the backend service and set FRONTEND_URL to the frontend's domain
+   - Redeploy both services
+
+5. Visit your frontend domain — Fairway Tracker should be live!
+
+### Auto-Deploy
+Railway automatically redeploys when you push to GitHub. So when Claude Code pushes updates, your live app updates automatically.
+
+For more details on environment variables and persistent data, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Ideas for Future Features
 

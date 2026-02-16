@@ -4,6 +4,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import API_BASE from './config';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -283,7 +284,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await api(`/api/courses/search?q=${encodeURIComponent(val)}`);
+        const data = await api(`${API_BASE}/courses/search?q=${encodeURIComponent(val)}`);
         const list = Array.isArray(data) ? data : (data.courses || []);
         setResults(list);
         setShowResults(list.length > 0);
@@ -310,7 +311,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
 
     // Then fetch full details (tees, par, scorecard, etc.)
     try {
-      const details = await api(`/api/courses/${course.id}`);
+      const details = await api(`${API_BASE}/courses/${course.id}`);
       if (details && !details.error) {
         const parData = details.par || {};
         onCourseSelect({
@@ -341,7 +342,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
     if (!customTeeName || !selectedCourse?.course_id) return;
     setSavingCustomTee(true);
     try {
-      await api(`/api/courses/${selectedCourse.course_id}/custom-tees`, {
+      await api(`${API_BASE}/courses/${selectedCourse.course_id}/custom-tees`, {
         method: 'POST',
         body: JSON.stringify({
           name: customTeeName,
@@ -555,7 +556,7 @@ function VoiceMemoUpload({ onParsed }) {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+      const res = await fetch(`${API_BASE}/transcribe`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -684,12 +685,12 @@ function LogSession({ onSaved }) {
     if (parsed.course) {
       setCourse(parsed.course);
       // Try to search for the course via API
-      api(`/api/courses/search?q=${encodeURIComponent(parsed.course)}`)
+      api(`${API_BASE}/courses/search?q=${encodeURIComponent(parsed.course)}`)
         .then(data => {
           const list = Array.isArray(data) ? data : (data.courses || []);
           if (list.length > 0) {
             const match = list[0];
-            api(`/api/courses/${match.id}`).then(details => {
+            api(`${API_BASE}/courses/${match.id}`).then(details => {
               if (details && !details.error) {
                 setSelectedCourse({
                   course_id: match.id,
@@ -782,7 +783,7 @@ function LogSession({ onSaved }) {
       } : null,
     };
 
-    await api('/api/sessions', { method: 'POST', body: JSON.stringify(session) });
+    await api(`${API_BASE}/sessions`, { method: 'POST', body: JSON.stringify(session) });
     setSaving(false);
     setSaved(true);
 
@@ -1112,7 +1113,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api('/api/stats').then(data => { setStats(data); setLoading(false); });
+    api(`${API_BASE}/stats`).then(data => { setStats(data); setLoading(false); });
   }, []);
 
   if (loading) {
@@ -1538,7 +1539,7 @@ function Coaching() {
   async function getAdvice() {
     setLoadingAdvice(true);
     setAdvice('');
-    const data = await api('/api/coaching/advice');
+    const data = await api(`${API_BASE}/coaching/advice`);
     setAdvice(data.advice);
     setLoadingAdvice(false);
   }
@@ -1546,7 +1547,7 @@ function Coaching() {
   async function getSummary() {
     setLoadingSummary(true);
     setSummary('');
-    const data = await api('/api/coaching/summary');
+    const data = await api(`${API_BASE}/coaching/summary`);
     setSummary(data.summary);
     setLoadingSummary(false);
   }
@@ -1599,13 +1600,13 @@ export default function App() {
   }, []);
 
   const loadSessions = useCallback(() => {
-    api('/api/sessions').then(data => setSessions(data));
+    api(`${API_BASE}/sessions`).then(data => setSessions(data));
   }, []);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   async function handleDelete(id) {
-    await api(`/api/sessions/${id}`, { method: 'DELETE' });
+    await api(`${API_BASE}/sessions/${id}`, { method: 'DELETE' });
     loadSessions();
   }
 

@@ -3,3 +3,4 @@ flask-cors
 anthropic
 requests
 openai-whisper
+gunicorn>=22.0.0

@@ -1,6 +1,11 @@
-flask
-flask-cors
-anthropic
-requests
-openai-whisper
+flask>=3.1.0
+flask-cors>=5.0.1
+anthropic>=0.40.0
 gunicorn>=22.0.0
+
+# Install CPU-only PyTorch first (MUCH smaller, no NVIDIA/CUDA packages)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
+# Then install whisper (it will use the already-installed CPU torch)
+openai-whisper>=20240930

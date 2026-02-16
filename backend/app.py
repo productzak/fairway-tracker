@@ -40,6 +40,7 @@ CORS(app)
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sessions.json")
 COURSE_CACHE_FILE = os.path.join(DATA_DIR, "course_cache.json")
+CUSTOM_TEES_FILE = os.path.join(DATA_DIR, "custom_tees.json")
 
 # Claude model used for all AI features
 CLAUDE_MODEL = "claude-sonnet-4-5-20250514"
@@ -118,12 +119,225 @@ def _set_cached_course(course_id, data):
     _write_course_cache(cache)
 
 
+def _read_custom_tees():
+    """Read custom tees from disk."""
+    if not os.path.exists(CUSTOM_TEES_FILE):
+        return {}
+    with open(CUSTOM_TEES_FILE, "r") as f:
+        return json.load(f)
+
+
+def _write_custom_tees(data):
+    """Write custom tees to disk."""
+    _ensure_data_file()
+    with open(CUSTOM_TEES_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def _golf_api_headers():
     """Return headers for the GolfCourseAPI."""
     api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
     return {
         "Authorization": f"Key {api_key}",
         "Content-Type": "application/json",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Scorecard parsing
+# ---------------------------------------------------------------------------
+
+
+import re
+
+
+def _clean_tee_name(raw_name):
+    """Clean a tee name from scorecard data (remove trailing colons, parens, etc.)."""
+    name = raw_name.strip().rstrip(":")
+    # Remove parenthetical year/info e.g. "Blue (2023)"
+    name = re.sub(r'\s*\([^)]*\)\s*$', '', name)
+    # Remove leading/trailing whitespace
+    return name.strip()
+
+
+def _parse_scorecard_row_format(rows):
+    """
+    Parse the row-based scorecard format where each row is a dict like:
+    {"Hole:": "Blue:", "1": "511", "2": "447", ..., "Out": "3580"}
+    Returns: (par_data, tee_yardages, handicap_data)
+    """
+    par_holes = {}
+    handicap_holes = {}
+    tee_yardages = {}  # {tee_name: {hole_num: yardage}}
+
+    for row in rows:
+        label_raw = row.get("Hole:", row.get("Hole", "")).strip()
+        label = label_raw.rstrip(":").strip().lower()
+
+        if label == "par":
+            for key, val in row.items():
+                if key in ("Hole:", "Hole", "Out", "In", "Total"):
+                    continue
+                try:
+                    hole_num = int(key)
+                    par_holes[hole_num] = int(val)
+                except (ValueError, TypeError):
+                    pass
+
+        elif label == "handicap" or label == "hdcp":
+            for key, val in row.items():
+                if key in ("Hole:", "Hole", "Out", "In", "Total"):
+                    continue
+                try:
+                    hole_num = int(key)
+                    handicap_holes[hole_num] = int(val)
+                except (ValueError, TypeError):
+                    pass
+
+        elif label and label not in ("hole", ""):
+            # This is a tee row
+            tee_name = _clean_tee_name(label_raw.rstrip(":"))
+            hole_yards = {}
+            for key, val in row.items():
+                if key in ("Hole:", "Hole", "Out", "In", "Total"):
+                    continue
+                try:
+                    hole_num = int(key)
+                    yards = int(val)
+                    hole_yards[hole_num] = yards
+                except (ValueError, TypeError):
+                    pass
+            # Skip if all zeros or empty
+            if hole_yards and sum(hole_yards.values()) > 0:
+                tee_yardages[tee_name] = hole_yards
+
+    return par_holes, tee_yardages, handicap_holes
+
+
+def _parse_scorecard_perhole_format(rows):
+    """
+    Parse the per-hole scorecard format where each entry is like:
+    {"Par": 5, "Hole": 1, "tees": {"teeBox1": {"color": "Blue", "yards": 519}, ...}, "Handicap": 1}
+    Returns: (par_data, tee_yardages, handicap_data)
+    """
+    par_holes = {}
+    handicap_holes = {}
+    tee_yardages = {}  # {tee_name: {hole_num: yardage}}
+
+    for entry in rows:
+        hole_num = entry.get("Hole")
+        if hole_num is None:
+            continue
+
+        if entry.get("Par") is not None:
+            try:
+                par_holes[hole_num] = int(entry["Par"])
+            except (ValueError, TypeError):
+                pass
+
+        if entry.get("Handicap") is not None:
+            try:
+                handicap_holes[hole_num] = int(entry["Handicap"])
+            except (ValueError, TypeError):
+                pass
+
+        tees = entry.get("tees", {})
+        for tee_key, tee_data in tees.items():
+            tee_name = tee_data.get("color") or tee_data.get("name") or tee_key
+            tee_name = _clean_tee_name(tee_name)
+            yards = tee_data.get("yards") or tee_data.get("yardage")
+            if yards is not None:
+                if tee_name not in tee_yardages:
+                    tee_yardages[tee_name] = {}
+                try:
+                    tee_yardages[tee_name][hole_num] = int(yards)
+                except (ValueError, TypeError):
+                    pass
+
+    return par_holes, tee_yardages, handicap_holes
+
+
+def _parse_scorecard(scorecard_raw):
+    """
+    Parse scorecard data from the API. The scorecard field is a JSON string.
+    Detects which format (row-based or per-hole) and returns normalized data.
+    Returns: {par, handicap, tee_yardages} or None
+    """
+    if not scorecard_raw:
+        return None
+
+    try:
+        if isinstance(scorecard_raw, str):
+            rows = json.loads(scorecard_raw)
+        else:
+            rows = scorecard_raw
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(rows, list) or len(rows) == 0:
+        return None
+
+    # Detect format: per-hole has "Hole" as an integer key, row-based has "Hole:" as a label
+    first = rows[0]
+    if isinstance(first.get("Hole"), int) and "tees" in first:
+        par_holes, tee_yardages, handicap_holes = _parse_scorecard_perhole_format(rows)
+    elif "Hole:" in first or "Hole" in first:
+        par_holes, tee_yardages, handicap_holes = _parse_scorecard_row_format(rows)
+    else:
+        return None
+
+    if not par_holes and not tee_yardages:
+        return None
+
+    # Determine number of holes
+    all_holes = set()
+    all_holes.update(par_holes.keys())
+    for ty in tee_yardages.values():
+        all_holes.update(ty.keys())
+    if not all_holes:
+        return None
+
+    num_holes = max(all_holes)
+    hole_range = list(range(1, num_holes + 1))
+
+    # Build par structure
+    par_list = [par_holes.get(h, 0) for h in hole_range]
+    front_holes = [h for h in hole_range if h <= 9]
+    back_holes = [h for h in hole_range if h > 9]
+    par_front = sum(par_holes.get(h, 0) for h in front_holes)
+    par_back = sum(par_holes.get(h, 0) for h in back_holes)
+    par_total = par_front + par_back
+
+    par_data = {
+        "total": par_total if par_total > 0 else None,
+        "front": par_front if par_front > 0 else None,
+        "back": par_back if par_back > 0 else None,
+        "holes": par_list,
+    }
+
+    # Build handicap list
+    handicap_list = [handicap_holes.get(h) for h in hole_range]
+    has_handicap = any(v is not None for v in handicap_list)
+
+    # Build tee data
+    tees_parsed = {}
+    for tee_name, hole_yards in tee_yardages.items():
+        yard_list = [hole_yards.get(h, 0) for h in hole_range]
+        front_yds = sum(hole_yards.get(h, 0) for h in front_holes)
+        back_yds = sum(hole_yards.get(h, 0) for h in back_holes)
+        total_yds = front_yds + back_yds
+        tees_parsed[tee_name] = {
+            "hole_yardages": yard_list,
+            "front_yardage": front_yds,
+            "back_yardage": back_yds,
+            "total_yardage": total_yds,
+        }
+
+    return {
+        "par": par_data,
+        "handicap": handicap_list if has_handicap else None,
+        "tee_yardages": tees_parsed,
+        "num_holes": num_holes,
     }
 
 
@@ -242,6 +456,7 @@ def create_session():
         "up_and_downs": data.get("up_and_downs"),
         "highlights": data.get("highlights", ""),
         "trouble_spots": data.get("trouble_spots", ""),
+        "score_to_par": data.get("score_to_par"),
         "conditions": data.get("conditions"),
         "ai_parsed": data.get("ai_parsed"),
         "created_at": datetime.now().isoformat(),
@@ -535,12 +750,15 @@ def search_courses():
 def get_course_details(course_id):
     """
     Fetch full course details (tees, par, scorecard) from GolfCourseAPI.
+    Parses scorecard data for hole-by-hole info and merges with teeBoxes.
     Uses a local JSON file cache (30-day TTL) to stay within rate limits.
     """
     # Check disk cache first
     cached = _get_cached_course(course_id)
     if cached:
-        return jsonify(cached)
+        # Merge custom tees before returning
+        result = _merge_custom_tees(course_id, cached)
+        return jsonify(result)
 
     api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
     if not api_key:
@@ -556,35 +774,120 @@ def get_course_details(course_id):
             return jsonify({"error": f"API returned {resp.status_code}"}), 200
 
         raw = resp.json()
-
-        # Normalize the response into our simplified format
         location = raw.get("location", {})
         tees_raw = raw.get("tees", {})
 
-        # Collect tees from male + female sections
-        tees = []
-        seen_tee_names = set()
+        # --- Parse teeBoxes for slope/rating ---
+        tee_box_info = {}  # {lowercase_name: {slope, rating}}
+        tee_boxes_raw = raw.get("teeBoxes") or raw.get("tee_boxes")
+        if tee_boxes_raw:
+            try:
+                if isinstance(tee_boxes_raw, str):
+                    tee_boxes_raw = json.loads(tee_boxes_raw)
+                for tb in (tee_boxes_raw or []):
+                    tb_name = _clean_tee_name(tb.get("name", tb.get("tee_name", ""))).lower()
+                    if tb_name:
+                        tee_box_info[tb_name] = {
+                            "slope": tb.get("slope"),
+                            "rating": tb.get("rating") or tb.get("course_rating"),
+                        }
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # --- Collect tees from male + female sections (old API structure) ---
+        api_tees = {}
         for gender in ["male", "female"]:
             for t in tees_raw.get(gender, []):
-                tee_name = t.get("tee_name", "Unknown")
-                if tee_name.lower() in seen_tee_names:
-                    continue
-                seen_tee_names.add(tee_name.lower())
-                tees.append({
-                    "name": tee_name,
-                    "color": _guess_tee_color(tee_name),
-                    "total_yardage": t.get("total_yards"),
-                    "par": t.get("par_total"),
-                    "slope": t.get("slope"),
-                    "rating": t.get("course_rating"),
-                })
+                tee_name = _clean_tee_name(t.get("tee_name", "Unknown"))
+                key = tee_name.lower()
+                if key not in api_tees:
+                    api_tees[key] = {
+                        "name": tee_name,
+                        "color": _guess_tee_color(tee_name),
+                        "total_yardage": t.get("total_yards"),
+                        "par": t.get("par_total"),
+                        "slope": t.get("slope"),
+                        "rating": t.get("course_rating"),
+                    }
 
-        # Compute course par from first tee with par data
+        # --- Parse scorecard data ---
+        scorecard_data = _parse_scorecard(raw.get("scorecard"))
+
+        # Build par structure
+        par_data = None
+        handicap_data = None
         course_par = None
-        for t in tees:
-            if t.get("par"):
-                course_par = t["par"]
-                break
+
+        if scorecard_data:
+            par_data = scorecard_data["par"]
+            handicap_data = scorecard_data["handicap"]
+            course_par = par_data.get("total")
+
+        # If no par from scorecard, try from API tees
+        if not course_par:
+            for t in api_tees.values():
+                if t.get("par"):
+                    course_par = t["par"]
+                    break
+
+        # --- Merge tee data: scorecard yardages + teeBoxes slope/rating + API tees ---
+        final_tees = {}
+
+        # Start with API tees
+        for key, tee in api_tees.items():
+            final_tees[key] = {
+                "name": tee["name"],
+                "color": tee["color"],
+                "total_yardage": tee.get("total_yardage"),
+                "slope": tee.get("slope"),
+                "rating": tee.get("rating"),
+                "front_yardage": None,
+                "back_yardage": None,
+                "hole_yardages": None,
+            }
+
+        # Layer on scorecard-parsed tee data
+        if scorecard_data:
+            for tee_name, yard_data in scorecard_data["tee_yardages"].items():
+                key = tee_name.lower()
+                if key in final_tees:
+                    # Merge yardage data into existing tee
+                    final_tees[key]["total_yardage"] = yard_data["total_yardage"]
+                    final_tees[key]["front_yardage"] = yard_data["front_yardage"]
+                    final_tees[key]["back_yardage"] = yard_data["back_yardage"]
+                    final_tees[key]["hole_yardages"] = yard_data["hole_yardages"]
+                else:
+                    # New tee from scorecard
+                    final_tees[key] = {
+                        "name": tee_name,
+                        "color": _guess_tee_color(tee_name),
+                        "total_yardage": yard_data["total_yardage"],
+                        "front_yardage": yard_data["front_yardage"],
+                        "back_yardage": yard_data["back_yardage"],
+                        "hole_yardages": yard_data["hole_yardages"],
+                        "slope": None,
+                        "rating": None,
+                    }
+
+        # Layer on teeBoxes slope/rating
+        for key, tb in tee_box_info.items():
+            if key in final_tees:
+                if tb.get("slope") and not final_tees[key].get("slope"):
+                    final_tees[key]["slope"] = tb["slope"]
+                if tb.get("rating") and not final_tees[key].get("rating"):
+                    final_tees[key]["rating"] = tb["rating"]
+
+        # Convert to list, sorted by yardage (longest first)
+        tees_list = sorted(
+            final_tees.values(),
+            key=lambda t: t.get("total_yardage") or 0,
+            reverse=True,
+        )
+
+        # Determine holes count
+        num_holes = raw.get("holes", 18)
+        if scorecard_data:
+            num_holes = scorecard_data["num_holes"]
 
         result = {
             "id": course_id,
@@ -592,12 +895,15 @@ def get_course_details(course_id):
             "course_name": raw.get("course_name", ""),
             "city": location.get("city", ""),
             "state": location.get("state", ""),
-            "holes": raw.get("holes", 18),
-            "par": course_par,
-            "tees": tees,
+            "holes": num_holes,
+            "par": par_data if par_data else {"total": course_par},
+            "tees": tees_list,
+            "handicap": handicap_data,
         }
 
         _set_cached_course(course_id, result)
+        # Merge custom tees before returning
+        result = _merge_custom_tees(course_id, result)
         return jsonify(result)
 
     except Exception as e:
@@ -605,17 +911,107 @@ def get_course_details(course_id):
         return jsonify({"error": str(e)}), 200
 
 
+def _merge_custom_tees(course_id, course_data):
+    """Merge user-saved custom tee data into course data."""
+    custom = _read_custom_tees()
+    key = str(course_id)
+    if key not in custom:
+        return course_data
+
+    custom_tees = custom[key].get("tees", [])
+    existing_names = {t.get("name", "").lower() for t in course_data.get("tees", [])}
+
+    for ct in custom_tees:
+        ct_name = ct.get("name", "").lower()
+        if ct_name in existing_names:
+            # Update slope/rating on existing tee
+            for t in course_data.get("tees", []):
+                if t.get("name", "").lower() == ct_name:
+                    if ct.get("slope") and not t.get("slope"):
+                        t["slope"] = ct["slope"]
+                    if ct.get("rating") and not t.get("rating"):
+                        t["rating"] = ct["rating"]
+                    if ct.get("yardage") and not t.get("total_yardage"):
+                        t["total_yardage"] = ct["yardage"]
+                    break
+        else:
+            # Add new custom tee
+            course_data.setdefault("tees", []).append({
+                "name": ct["name"],
+                "color": _guess_tee_color(ct["name"]),
+                "total_yardage": ct.get("yardage"),
+                "slope": ct.get("slope"),
+                "rating": ct.get("rating"),
+                "front_yardage": None,
+                "back_yardage": None,
+                "hole_yardages": None,
+                "added_by_user": True,
+            })
+
+    return course_data
+
+
 def _guess_tee_color(tee_name):
     """Map a tee name to a standard color string for frontend display."""
     name = tee_name.lower()
     for color in ["black", "blue", "white", "gold", "red", "green", "silver", "yellow"]:
         if color in name:
+            if color == "yellow":
+                return "gold"
             return color
-    if "champ" in name:
+    if "champ" in name or "tips" in name:
         return "black"
-    if "senior" in name or "forward" in name:
+    if "back" in name:
+        return "blue"
+    if "middle" in name:
+        return "white"
+    if "senior" in name or "forward" in name or "ladies" in name:
+        return "red"
+    if "bronze" in name or "copper" in name:
         return "gold"
     return "gray"
+
+
+@app.route("/api/courses/<course_id>/custom-tees", methods=["POST"])
+def save_custom_tee(course_id):
+    """Save user-entered tee data for a course."""
+    data = request.get_json()
+    if not data or not data.get("name"):
+        return jsonify({"error": "Tee name is required"}), 400
+
+    custom = _read_custom_tees()
+    key = str(course_id)
+    if key not in custom:
+        custom[key] = {"course_name": data.get("course_name", ""), "tees": []}
+
+    # Update or add tee
+    tee_entry = {
+        "name": data["name"],
+        "yardage": data.get("yardage"),
+        "slope": data.get("slope"),
+        "rating": data.get("rating"),
+        "added_by_user": True,
+    }
+
+    existing = custom[key]["tees"]
+    found = False
+    for i, t in enumerate(existing):
+        if t.get("name", "").lower() == data["name"].lower():
+            existing[i] = tee_entry
+            found = True
+            break
+    if not found:
+        existing.append(tee_entry)
+
+    _write_custom_tees(custom)
+
+    # Invalidate the disk cache for this course so next fetch merges fresh
+    cache = _read_course_cache()
+    if key in cache:
+        del cache[key]
+        _write_course_cache(cache)
+
+    return jsonify({"saved": True, "tee": tee_entry})
 
 
 # ── Transcription ──────────────────────────────────────────────────────────
@@ -763,9 +1159,14 @@ def _format_sessions_for_coaching(sessions, limit=30):
                 if s.get('tee_yardage'):
                     course_info += f", {s['tee_yardage']}yds"
                 course_info += ")"
+            score_str = str(s.get('score', '?'))
+            if s.get('score_to_par') is not None:
+                stp = s['score_to_par']
+                score_str += f" ({'+' if stp >= 0 else ''}{stp} vs par)"
+
             line = (
                 f"[Round] {s['date']} — Course: {course_info} | "
-                f"Score: {s.get('score', '?')} (F9: {s.get('front_nine', '?')}, "
+                f"Score: {score_str} (F9: {s.get('front_nine', '?')}, "
                 f"B9: {s.get('back_nine', '?')}) | Feel: {s.get('feel_rating', '?')}/5"
                 f"{intention}{conf_str}{equipment}"
             )

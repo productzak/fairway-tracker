@@ -143,6 +143,108 @@ function Skeleton({ width, height }) {
 }
 
 // ---------------------------------------------------------------------------
+// Scorecard Component
+// ---------------------------------------------------------------------------
+
+function Scorecard({ courseData, selectedTee }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!courseData) return null;
+
+  const par = courseData.par;
+  const handicap = courseData.handicap;
+  const tees = courseData.tees || [];
+
+  // Need at least par data or tees with hole yardages
+  const hasHoleData = (par && par.holes && par.holes.some(v => v > 0))
+    || tees.some(t => t.hole_yardages && t.hole_yardages.length > 0);
+
+  if (!hasHoleData) return null;
+
+  const numHoles = par && par.holes ? par.holes.length : (tees.find(t => t.hole_yardages)?.hole_yardages?.length || 18);
+  const hasFront = numHoles >= 9;
+  const hasBack = numHoles > 9;
+  const frontHoles = Array.from({ length: Math.min(numHoles, 9) }, (_, i) => i);
+  const backHoles = numHoles > 9 ? Array.from({ length: numHoles - 9 }, (_, i) => i + 9) : [];
+
+  // Summary for collapsed state
+  const parTotal = par?.total;
+  const selectedTeeYds = selectedTee?.total_yardage;
+
+  return (
+    <div className="scorecard-section">
+      <button className="scorecard-toggle" onClick={() => setExpanded(!expanded)}>
+        <span>{expanded ? '\u25BE' : '\u25B8'} View Scorecard</span>
+        <span className="scorecard-summary">
+          {parTotal && <span>Par {parTotal}</span>}
+          {selectedTeeYds && <span>{Number(selectedTeeYds).toLocaleString()} yds</span>}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="scorecard-table-wrap">
+          <table className="scorecard-table">
+            <thead>
+              <tr>
+                <th className="scorecard-label-col">Hole</th>
+                {hasFront && frontHoles.map(i => <th key={i}>{i + 1}</th>)}
+                {hasFront && <th className="scorecard-subtotal">Out</th>}
+                {hasBack && backHoles.map(i => <th key={i}>{i + 1}</th>)}
+                {hasBack && <th className="scorecard-subtotal">In</th>}
+                {hasBack && <th className="scorecard-subtotal scorecard-total">Tot</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {/* Handicap row */}
+              {handicap && handicap.some(v => v != null) && (
+                <tr className="scorecard-row-handicap">
+                  <td className="scorecard-label-col">Hdcp</td>
+                  {hasFront && frontHoles.map(i => <td key={i}>{handicap[i] ?? ''}</td>)}
+                  {hasFront && <td className="scorecard-subtotal"></td>}
+                  {hasBack && backHoles.map(i => <td key={i}>{handicap[i] ?? ''}</td>)}
+                  {hasBack && <td className="scorecard-subtotal"></td>}
+                  {hasBack && <td className="scorecard-subtotal"></td>}
+                </tr>
+              )}
+              {/* Par row */}
+              {par && par.holes && (
+                <tr className="scorecard-row-par">
+                  <td className="scorecard-label-col">Par</td>
+                  {hasFront && frontHoles.map(i => <td key={i}>{par.holes[i] || ''}</td>)}
+                  {hasFront && <td className="scorecard-subtotal">{par.front || ''}</td>}
+                  {hasBack && backHoles.map(i => <td key={i}>{par.holes[i] || ''}</td>)}
+                  {hasBack && <td className="scorecard-subtotal">{par.back || ''}</td>}
+                  {hasBack && <td className="scorecard-subtotal scorecard-total">{par.total || ''}</td>}
+                </tr>
+              )}
+              {/* Tee rows */}
+              {tees.filter(t => t.hole_yardages && t.hole_yardages.length > 0).map((t, idx) => {
+                const isSelected = selectedTee && selectedTee.name === t.name;
+                return (
+                  <tr key={idx} className={`scorecard-row-tee ${isSelected ? 'scorecard-row-selected' : ''}`}>
+                    <td className="scorecard-label-col">
+                      <span className="scorecard-tee-label">
+                        <span className="tee-color-dot-sm" style={{ background: TEE_COLORS[t.color] || '#9ca3af' }} />
+                        {t.name}
+                      </span>
+                    </td>
+                    {hasFront && frontHoles.map(i => <td key={i}>{t.hole_yardages[i] || ''}</td>)}
+                    {hasFront && <td className="scorecard-subtotal">{t.front_yardage || ''}</td>}
+                    {hasBack && backHoles.map(i => <td key={i}>{t.hole_yardages[i] || ''}</td>)}
+                    {hasBack && <td className="scorecard-subtotal">{t.back_yardage || ''}</td>}
+                    {hasBack && <td className="scorecard-subtotal scorecard-total">{t.total_yardage || ''}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Course Search Component
 // ---------------------------------------------------------------------------
 
@@ -152,6 +254,12 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showCustomTee, setShowCustomTee] = useState(false);
+  const [customTeeName, setCustomTeeName] = useState('');
+  const [customTeeYardage, setCustomTeeYardage] = useState('');
+  const [customTeeSlope, setCustomTeeSlope] = useState('');
+  const [customTeeRating, setCustomTeeRating] = useState('');
+  const [savingCustomTee, setSavingCustomTee] = useState(false);
   const debounceRef = useRef(null);
   const wrapperRef = useRef(null);
 
@@ -200,18 +308,20 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
       tees: [],
     });
 
-    // Then fetch full details (tees, par, etc.)
+    // Then fetch full details (tees, par, scorecard, etc.)
     try {
       const details = await api(`/api/courses/${course.id}`);
       if (details && !details.error) {
+        const parData = details.par || {};
         onCourseSelect({
           course_id: course.id,
           name: details.name || course.name,
           city: details.city || course.city || '',
           state: details.state || course.state || '',
           holes: details.holes || course.holes || 18,
-          par: details.par,
+          par: parData,
           tees: details.tees || [],
+          handicap: details.handicap || null,
         });
       }
     } catch (err) {
@@ -223,7 +333,46 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
   function handleClear() {
     setQuery('');
     setLoadingDetails(false);
+    setShowCustomTee(false);
     onClear();
+  }
+
+  async function handleSaveCustomTee() {
+    if (!customTeeName || !selectedCourse?.course_id) return;
+    setSavingCustomTee(true);
+    try {
+      await api(`/api/courses/${selectedCourse.course_id}/custom-tees`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: customTeeName,
+          course_name: selectedCourse.name,
+          yardage: customTeeYardage ? parseInt(customTeeYardage) : null,
+          slope: customTeeSlope ? parseInt(customTeeSlope) : null,
+          rating: customTeeRating ? parseFloat(customTeeRating) : null,
+        }),
+      });
+      // Create a tee object and select it
+      const newTee = {
+        name: customTeeName,
+        color: _guessTeeColor(customTeeName),
+        total_yardage: customTeeYardage ? parseInt(customTeeYardage) : null,
+        slope: customTeeSlope ? parseInt(customTeeSlope) : null,
+        rating: customTeeRating ? parseFloat(customTeeRating) : null,
+        added_by_user: true,
+      };
+      onTeeSelect(newTee);
+      // Add to selectedCourse tees
+      const updatedTees = [...(selectedCourse.tees || []), newTee];
+      onCourseSelect({ ...selectedCourse, tees: updatedTees });
+      setShowCustomTee(false);
+      setCustomTeeName('');
+      setCustomTeeYardage('');
+      setCustomTeeSlope('');
+      setCustomTeeRating('');
+    } catch (err) {
+      console.error('Failed to save custom tee:', err);
+    }
+    setSavingCustomTee(false);
   }
 
   // If a course is already selected, show the selected course card + tees
@@ -243,7 +392,7 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
             )}
             <div className="selected-course-meta">
               {selectedCourse.holes && <span>{selectedCourse.holes} holes</span>}
-              {selectedCourse.par && <span>Par {selectedCourse.par}</span>}
+              {selectedCourse.par && <span>Par {typeof selectedCourse.par === 'object' ? selectedCourse.par.total : selectedCourse.par}</span>}
             </div>
           </div>
           <button className="course-clear-btn" onClick={handleClear} title="Change course">&times;</button>
@@ -280,6 +429,49 @@ function CourseSearch({ onCourseSelect, onClear, selectedCourse, selectedTee, on
             </div>
           </>
         )}
+
+        {/* Inline custom tee entry */}
+        <div className="custom-tee-section">
+          <button className="link-btn custom-tee-toggle" onClick={() => setShowCustomTee(!showCustomTee)}>
+            {showCustomTee ? '\u25BE' : '\u25B8'} Don't see your tees? Add manually
+          </button>
+          {showCustomTee && (
+            <div className="custom-tee-form fade-in">
+              <div className="manual-tee-details">
+                <div className="round-stat-field">
+                  <label className="mini-label">Tee Name</label>
+                  <input type="text" value={customTeeName} onChange={e => setCustomTeeName(e.target.value)} placeholder="e.g. White" className="form-input" />
+                </div>
+                <div className="round-stat-field">
+                  <label className="mini-label">Yardage</label>
+                  <input type="number" value={customTeeYardage} onChange={e => setCustomTeeYardage(e.target.value)} placeholder="e.g. 6200" className="form-input" />
+                </div>
+                <div className="round-stat-field">
+                  <label className="mini-label">Slope</label>
+                  <input type="number" value={customTeeSlope} onChange={e => setCustomTeeSlope(e.target.value)} placeholder="e.g. 128" className="form-input" />
+                </div>
+              </div>
+              <div className="manual-tee-details" style={{ marginTop: '8px' }}>
+                <div className="round-stat-field">
+                  <label className="mini-label">Rating</label>
+                  <input type="number" value={customTeeRating} onChange={e => setCustomTeeRating(e.target.value)} placeholder="e.g. 71.2" className="form-input" step="0.1" />
+                </div>
+                <div className="round-stat-field" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <button
+                    className="save-custom-tee-btn"
+                    onClick={handleSaveCustomTee}
+                    disabled={!customTeeName || savingCustomTee}
+                  >
+                    {savingCustomTee ? 'Saving...' : 'Save & Select Tee'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Scorecard display */}
+        <Scorecard courseData={selectedCourse} selectedTee={selectedTee} />
 
         {/* No tee data fallback */}
         {!loadingDetails && tees.length === 0 && (
@@ -567,7 +759,8 @@ function LogSession({ onSaved }) {
       course_id: isRound && selectedCourse ? selectedCourse.course_id : null,
       course_city: isRound && selectedCourse ? selectedCourse.city : '',
       course_state: isRound && selectedCourse ? selectedCourse.state : '',
-      course_par: isRound && selectedCourse ? selectedCourse.par : null,
+      course_par: isRound && selectedCourse ? (typeof selectedCourse.par === 'object' ? selectedCourse.par?.total : selectedCourse.par) : null,
+      score_to_par: isRound && score && selectedCourse?.par ? parseInt(score) - (typeof selectedCourse.par === 'object' ? selectedCourse.par?.total : selectedCourse.par) : null,
       tee_yardage: isRound ? (selectedTee ? selectedTee.total_yardage : (manualYardage ? parseInt(manualYardage) : null)) : null,
       tee_slope: isRound ? (selectedTee ? selectedTee.slope : (manualSlope ? parseInt(manualSlope) : null)) : null,
       tee_rating: isRound ? (selectedTee ? selectedTee.rating : (manualRating ? parseFloat(manualRating) : null)) : null,
@@ -1246,7 +1439,15 @@ function SessionCard({ session, onDelete }) {
             {s.score && (
               <span className="round-score">
                 Score: {s.score}
-                {s.course_par && <span className="vs-par"> ({s.score - s.course_par >= 0 ? '+' : ''}{s.score - s.course_par})</span>}
+                {(s.score_to_par != null || s.course_par) && (
+                  <span className="vs-par">
+                    {' '}({(() => {
+                      const vp = s.score_to_par != null ? s.score_to_par : (s.course_par ? s.score - s.course_par : null);
+                      if (vp == null) return '';
+                      return (vp >= 0 ? '+' : '') + vp;
+                    })()})
+                  </span>
+                )}
               </span>
             )}
             {(s.front_nine || s.back_nine) && (

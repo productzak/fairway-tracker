@@ -777,6 +777,18 @@ def get_course_details(course_id):
         location = raw.get("location", {})
         tees_raw = raw.get("tees", {})
 
+        # Debug: log what we got from the API
+        print(f"[Course details] Keys in response: {list(raw.keys())}")
+        print(f"[Course details] Has scorecard: {'scorecard' in raw}, type: {type(raw.get('scorecard'))}")
+        print(f"[Course details] Has teeBoxes: {'teeBoxes' in raw or 'tee_boxes' in raw}")
+        print(f"[Course details] Tees keys: {list(tees_raw.keys()) if isinstance(tees_raw, dict) else type(tees_raw)}")
+        if raw.get("scorecard"):
+            sc = raw["scorecard"]
+            if isinstance(sc, str) and len(sc) > 0:
+                print(f"[Course details] Scorecard (first 300 chars): {sc[:300]}")
+            else:
+                print(f"[Course details] Scorecard value: {sc}")
+
         # --- Parse teeBoxes for slope/rating ---
         tee_box_info = {}  # {lowercase_name: {slope, rating}}
         tee_boxes_raw = raw.get("teeBoxes") or raw.get("tee_boxes")
@@ -970,6 +982,23 @@ def _guess_tee_color(tee_name):
     if "bronze" in name or "copper" in name:
         return "gold"
     return "gray"
+
+
+@app.route("/api/courses/<course_id>/raw", methods=["GET"])
+def get_course_raw(course_id):
+    """Debug: return raw API response for a course."""
+    api_key = os.environ.get("GOLF_COURSE_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "GOLF_COURSE_API_KEY is not set"}), 200
+    try:
+        resp = requests.get(
+            f"{GOLF_COURSE_API_URL}/v1/courses/{course_id}",
+            headers=_golf_api_headers(),
+            timeout=10,
+        )
+        return jsonify(resp.json())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 200
 
 
 @app.route("/api/courses/<course_id>/custom-tees", methods=["POST"])

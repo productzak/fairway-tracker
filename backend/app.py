@@ -719,11 +719,19 @@ def search_courses():
             params={"search_query": query},
             timeout=10,
         )
+        print(f"[Course search] query='{query}' status={resp.status_code}")
         if resp.status_code != 200:
+            print(f"[Course search] Non-200 response: {resp.text[:500]}")
             return jsonify([])
 
         data = resp.json()
-        courses_raw = data.get("courses", [])
+        print(f"[Course search] Response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        # Handle various response formats
+        if isinstance(data, list):
+            courses_raw = data
+        else:
+            courses_raw = data.get("courses", [])
+        print(f"[Course search] Found {len(courses_raw)} courses")
 
         # Normalize to a simplified list
         courses = []
